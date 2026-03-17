@@ -240,7 +240,7 @@
           idTrouve: "",
           nom: "",
           prenom: "",
-          message: "Présences : paramétrage requis (⚙️) - colonnes attendues introuvables.",
+          message: "Présences : paramétrage requis - colonnes attendues introuvables.",
         });
         continue;
       }
