@@ -1,0 +1,287 @@
+<!doctype html>
+<html lang="fr">
+
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Outil de traitement automatisé des notes - Culture Numérique</title>
+  <link rel="stylesheet" href="./css/style.css" />
+</head>
+
+<body>
+  <div class="app-container">
+
+    <!-- En-tête -->
+    <header class="page-header">
+      <div>
+        <h1 class="page-title">Culture Numérique</h1>
+        <p class="page-description">Outil de traitement automatisé des notes</p>
+      </div>
+
+      <div class="header-actions">
+        <button id="btnAbout" type="button" class="btn btn-outline btn-apropos">À propos</button>
+      </div>
+    </header>
+
+    <!-- Avertissement Safari (affiché seulement si Safari détecté) -->
+    <div id="safariWarning" class="alerte warn bloc-cache" style="margin-bottom:16px;">
+      ⚠️ Sur macOS, Safari peut imposer des limitations pour l’import/export de fichiers.
+      Pour une meilleure compatibilité, utilisez plutôt <b>Chrome</b>, <b>Firefox</b> ou <b>Edge</b>.
+    </div>
+
+    <!-- Zone principale : Paramétrage + Imports -->
+    <div class="main-grid">
+
+      <!-- Colonne gauche : réglages des composantes et des points -->
+      <aside class="config-sidebar">
+        <section class="card">
+          <h2 class="card-title">Paramétrage</h2>
+
+          <!-- Total /20 (mis à jour par app.js) -->
+          <div class="points-summary" id="totalPointsDisplay">
+            <span>Total :</span>
+            <strong id="sumPoints">20,00</strong><span class="pts-max">/20</span>
+          </div>
+
+          <!-- Composante PIX -->
+          <div class="config-item">
+            <label class="checkbox-label" for="usePix">
+              <input id="usePix" type="checkbox" checked />
+              <span class="custom-checkbox"></span>
+              <span>PIX</span>
+            </label>
+            <input id="ptsPix" class="input-number" type="number" min="0" max="20" step="0.5" value="15" />
+          </div>
+
+          <!-- Composante Présences -->
+          <div class="config-item">
+            <label class="checkbox-label" for="usePres">
+              <input id="usePres" type="checkbox" checked />
+              <span class="custom-checkbox"></span>
+              <span>Présences</span>
+            </label>
+            <input id="ptsPres" class="input-number" type="number" min="0" max="20" step="0.5" value="5" />
+          </div>
+
+          <!-- Composante Recherche documentaire -->
+          <div class="config-item">
+            <label class="checkbox-label" for="useRD">
+              <input id="useRD" type="checkbox" />
+              <span class="custom-checkbox"></span>
+              <span>Recherche doc.</span>
+            </label>
+            <input id="ptsRD" class="input-number" type="number" min="0" max="20" step="0.5" value="0" />
+          </div>
+
+          <!-- Erreurs de de paramétrage (somme ≠ 20) -->
+          <div id="configError" class="alerte danger mini bloc-cache" style="margin-top:12px;"></div>
+        </section>
+      </aside>
+
+      <!-- Colonne droite : import des fichiers -->
+      <main class="files-main">
+        <!-- data-comps est mis à jour par app.js -->
+        <div class="imports-grid" id="importsGrid" data-comps="2">
+
+          <!-- Import PEGASE -->
+          <section class="file-card file-pegase" id="blocPegase">
+            <div class="file-head">
+              <div class="file-title-row">
+                <h3 class="file-title">Fichier modèle PEGASE (CSV)</h3>
+                <button id="btnCfgPegase" type="button" class="btn-icone btn-gear" title="Paramétrage colonnes (PEGASE)"
+                  disabled></button>
+              </div>
+              <span class="status-pill status-wait">En attente</span>
+            </div>
+
+            <div class="dropzone dz-card" data-input="fichierPegase">
+              <div class="dz-title">Importer fichier PEGASE</div>
+              <div class="dz-sub" id="dzPegaseName">Aucun fichier sélectionné</div>
+            </div>
+            <input id="fichierPegase" class="input-file-hidden" type="file" accept=".csv,text/csv" />
+          </section>
+
+          <!-- Import PIX -->
+          <section class="file-card" id="blocPix">
+            <div class="file-head">
+              <div class="file-title-row">
+                <h3 class="file-title">Fichier PIX (CSV)</h3>
+                <button id="btnCfgPix" type="button" class="btn-icone btn-gear" title="Paramétrage colonnes (PIX)"
+                  disabled></button>
+              </div>
+              <span class="status-pill status-wait">En attente</span>
+            </div>
+
+            <div class="dropzone dz-card" data-input="fichierPix">
+              <div class="dz-title">Importer fichier PIX</div>
+              <div class="dz-sub" id="dzPixName">Aucun fichier sélectionné</div>
+            </div>
+            <input id="fichierPix" class="input-file-hidden" type="file" accept=".csv,text/csv" />
+          </section>
+
+          <!-- Import Présences -->
+          <section class="file-card" id="blocPresences">
+            <div class="file-head">
+              <div class="file-title-row">
+                <h3 class="file-title">Fichiers de présence (CSV)</h3>
+                <button id="btnCfgPres" type="button" class="btn-icone btn-gear"
+                  title="Paramétrage colonnes (Présences)" disabled></button>
+              </div>
+              <span class="status-pill status-wait">En attente</span>
+            </div>
+
+            <div class="dropzone dz-card" data-input="fichiersPresences">
+              <div class="dz-title">Importer fichier(s) Présences</div>
+              <div class="dz-sub" id="dzPresName">Aucun fichier sélectionné</div>
+            </div>
+            <input id="fichiersPresences" class="input-file-hidden" type="file" accept=".csv,text/csv" multiple />
+          </section>
+
+          <!-- Import Recherche documentaire -->
+          <section class="file-card" id="blocRD">
+            <div class="file-head">
+              <div class="file-title-row">
+                <h3 class="file-title">Fichier Recherche documentaire (CSV)</h3>
+                <button id="btnCfgRD" type="button" class="btn-icone btn-gear" title="Paramétrage colonnes (RD)"
+                  disabled></button>
+              </div>
+              <span class="status-pill status-wait">En attente</span>
+            </div>
+
+            <div class="dropzone dz-card" data-input="fichierRD">
+              <div class="dz-title">Importer fichier RD</div>
+              <div class="dz-sub" id="dzRDName">Aucun fichier sélectionné</div>
+            </div>
+            <input id="fichierRD" class="input-file-hidden" type="file" accept=".csv,text/csv" />
+          </section>
+
+        </div>
+      </main>
+    </div>
+
+    <!-- Boutons principaux -->
+    <div class="actions-grid">
+      <button id="btnReinitialiser" class="btn btn-outline w-100">Réinitialiser</button>
+      <button id="btnAnalyser" class="btn btn-primary w-100">Analyser</button>
+    </div>
+
+    <!-- Messages d'info/erreur (ajoutés par JS) -->
+    <div id="zoneMessages" class="messages-row"></div>
+
+    <!-- Résultats (affiché après analyse) -->
+    <section id="zoneResultats" class="card bloc-cache" style="margin-top:18px;">
+      <h2 class="card-title" style="margin-bottom:12px;">Résultats</h2>
+
+      <!-- Résumé (généré par JS) -->
+      <div id="resume"></div>
+
+      <!-- Exports CSV -->
+      <div class="export-row">
+        <button id="btnExportPegase" class="btn btn-success">Exporter CSV PEGASE rempli</button>
+        <button id="btnExportAnomalies" class="btn btn-danger">Exporter CSV anomalies ▾</button>
+        <button id="btnExportCalcul" class="btn btn-primary">Exporter CSV calcul</button>
+      </div>
+
+      <!-- Tableau principal -->
+      <h3 class="sub-title">Tableau (aperçu)</h3>
+      <div class="table-tools">
+        <input id="recherche" class="input-text" type="search" placeholder="Rechercher (N° étudiant, nom, prénom)..." />
+        <select id="filtreAnomalies" class="form-select small">
+          <option value="tous" selected>Tout afficher</option>
+          <option value="avec">Avec anomalies</option>
+          <option value="sans">Sans anomalies</option>
+        </select>
+      </div>
+
+      <div class="table-wrapper">
+        <table id="tableApercu" class="clean-table">
+          <thead></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+
+      <!-- Tableau anomalies -->
+      <h3 class="sub-title">Anomalies (aperçu)</h3>
+      <div class="table-wrapper">
+        <table id="tableAnomalies" class="clean-table">
+          <thead></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+
+  </div>
+
+  <!-- Modal de paramétrage des colonnes -->
+  <div id="modalOverlay" class="modal-overlay bloc-cache" role="dialog" aria-modal="true">
+    <div class="modal" role="document">
+
+      <!-- Titre + bouton fermer -->
+      <div class="modal-entete">
+        <div id="modalTitle" class="modal-titre">Paramétrage</div>
+        <button id="btnModalClose" type="button" class="btn-icone" title="Fermer">✕</button>
+      </div>
+
+      <!-- Texte d'aide (rempli par JS) -->
+      <div id="modalHint" class="texte-gris" style="margin:0 0 10px 0"></div>
+
+      <!-- 4 sélecteurs de colonnes (contenu rempli par JS) -->
+      <div class="grille-2">
+        <label class="champ" id="mapRow1">
+          <span class="champ-titre" id="mapLbl1"></span>
+          <select id="mapSel1"></select>
+        </label>
+
+        <label class="champ" id="mapRow2">
+          <span class="champ-titre" id="mapLbl2"></span>
+          <select id="mapSel2"></select>
+        </label>
+
+        <label class="champ" id="mapRow3">
+          <span class="champ-titre" id="mapLbl3"></span>
+          <select id="mapSel3"></select>
+        </label>
+
+        <label class="champ" id="mapRow4">
+          <span class="champ-titre" id="mapLbl4"></span>
+          <select id="mapSel4"></select>
+        </label>
+      </div>
+
+      <!-- Boutons modal -->
+      <div class="ligne boutons" style="justify-content:flex-end">
+        <button id="btnModalCancel" type="button" class="btn btn-outline">Annuler</button>
+        <button id="btnModalSave" type="button" class="btn btn-primary">Enregistrer</button>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Modal À propos -->
+  <div id="aboutOverlay" class="modal-overlay bloc-cache" role="dialog" aria-modal="true">
+    <div class="modal" role="document">
+
+      <div class="modal-entete">
+        <div class="modal-titre">À propos</div>
+        <button id="btnAboutClose" type="button" class="btn-icone" title="Fermer">✕</button>
+      </div>
+
+      <div id="aboutBody" class="texte-gris" style="margin:0 0 10px 0"></div>
+
+      <div class="ligne boutons" style="justify-content:flex-end">
+        <button id="btnAboutOk" type="button" class="btn btn-primary">OK</button>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Scripts -->
+  <script src="./js/commun.js"></script>
+  <script src="./js/csv.js"></script>
+  <script src="./js/imports.js"></script>
+  <script src="./js/traitement.js"></script>
+  <script src="./js/affichage.js"></script>
+  <script src="./js/app.js"></script>
+</body>
+
+</html>
