@@ -825,6 +825,20 @@
 
   // Exports CSV
 
+  // Construit l’horodatage pour les noms de fichiers
+  // Format : AAAA-MM-JJ_11h12
+  CN.app.exports.getHorodatageNomFichier = function () {
+    const now = new Date();
+
+    const yyyy = String(now.getFullYear());
+    const mm = String(now.getMonth() + 1).padStart(2, "0");
+    const dd = String(now.getDate()).padStart(2, "0");
+    const hh = String(now.getHours()).padStart(2, "0");
+    const mi = String(now.getMinutes()).padStart(2, "0");
+
+    return `${yyyy}-${mm}-${dd}_${hh}h${mi}`;
+  };
+
   // Génère le CSV des anomalies (colonne “Suggestion” seulement si utile)
   CN.app.exports.construireAnomaliesCSV = function (anomalies, delim) {
     const list = anomalies || [];
@@ -877,7 +891,9 @@
     const entetes = CN.etat.pegase.entetes;
     const lignes = CN.etat.pegaseRempli.lignesOut;
     const csv = CN.csv.genererCSV(entetes, lignes, CN.etat.mappingPegase.delimiteur || ";");
-    CN.csv.telechargerTexte("PEGASE_rempli.csv", csv);
+
+    const horodatage = CN.app.exports.getHorodatageNomFichier();
+    CN.csv.telechargerTexte(`PEGASE_rempli_${horodatage}.csv`, csv);
   };
 
   // Construit le CSV “calcul” (notes PIX / présences / RD / finale)
@@ -937,7 +953,9 @@
       CN.etat.config,
       delim
     );
-    CN.csv.telechargerTexte("calcul_notes.csv", csv);
+
+    const horodatage = CN.app.exports.getHorodatageNomFichier();
+    CN.csv.telechargerTexte(`calcul_notes_${horodatage}.csv`, csv);
   };
 
   // Export anomalies
@@ -978,12 +996,14 @@
       return;
     }
 
+    const horodatage = CN.app.exports.getHorodatageNomFichier();
+
     let selection = anomalies;
-    let nomFichier = "anomalies.csv";
+    let nomFichier = `anomalies_${horodatage}.csv`;
 
     if (typeUniqueOuNull) {
       selection = anomalies.filter(a => a.type === typeUniqueOuNull);
-      nomFichier = `anomalies_${typeUniqueOuNull}.csv`;
+      nomFichier = `anomalies_${typeUniqueOuNull}_${horodatage}.csv`;
     }
 
     if (!selection.length) {
