@@ -62,12 +62,40 @@
     return best;
   };
 
-  // Lit un fichier local en UTF-8
   CN.csv.lireFichierTexte = async function (file) {
     const buf = await file.arrayBuffer();
+
+    function nettoyerBOM(txt) {
+      return (txt && txt.charCodeAt(0) === 0xFEFF) ? txt.slice(1) : txt;
+    }
+
+    // On essaie d'abord en UTF-8 strict
+    try {
+      const txtUtf8 = new TextDecoder("utf-8", { fatal: true }).decode(buf);
+      return nettoyerBOM(txtUtf8);
+    } catch (_) {
+      // si échec, on tente d'autres encodages
+    }
+
+    // Fallback fréquent pour des CSV générés par Excel / anciens exports
+    try {
+      const txt1252 = new TextDecoder("windows-1252").decode(buf);
+      return nettoyerBOM(txt1252);
+    } catch (_) {
+      // on continue
+    }
+
+    // Fallback supplémentaire possible côté macOS
+    try {
+      const txtMac = new TextDecoder("macintosh").decode(buf);
+      return nettoyerBOM(txtMac);
+    } catch (_) {
+      // dernier secours
+    }
+
+    // Dernier recours
     let txt = new TextDecoder("utf-8").decode(buf);
-    if (txt.charCodeAt(0) === 0xFEFF) txt = txt.slice(1);
-    return txt;
+    return nettoyerBOM(txt);
   };
 
   // Parse un CSV en tableau de lignes
