@@ -73,6 +73,18 @@
             <input id="ptsRD" class="input-number" type="number" min="0" max="20" step="0.5" value="0" />
           </div>
 
+          <!-- Mode de remplissage PEGASE -->
+          <div class="config-extra">
+            <label class="config-label" for="modeRemplissage">Mode de remplissage PEGASE</label>
+            <select id="modeRemplissage" class="form-select">
+              <option value="ne_rien_ecraser" selected>Ne rien écraser</option>
+              <option value="ecraser_systematiquement">Écraser systématiquement</option>
+              <option value="si_nouvelle_superieure">Remplacer seulement si la nouvelle note est supérieure</option>
+              <option value="si_ancienne_lt10_et_nouvelle_gt10">Remplacer seulement si l'ancienne note est inférieure à
+                10 et la nouvelle supérieure à 10</option>
+            </select>
+          </div>
+
           <!-- Erreurs de de paramétrage (somme ≠ 20) -->
           <div id="configError" class="alerte danger mini bloc-cache" style="margin-top:12px;"></div>
         </section>

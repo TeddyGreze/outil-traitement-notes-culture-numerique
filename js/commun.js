@@ -20,6 +20,7 @@
     ptsRD: document.getElementById("ptsRD"),
     sumPoints: document.getElementById("sumPoints"),
     configError: document.getElementById("configError"),
+    modeRemplissage: document.getElementById("modeRemplissage"),
 
     // Avertissement navigateur
     safariWarning: document.getElementById("safariWarning"),
@@ -109,6 +110,7 @@
       ptsPix: 15,
       ptsPres: 5,
       ptsRD: 0,
+      modeRemplissage: "ne_rien_ecraser",
     },
 
     // Données importées

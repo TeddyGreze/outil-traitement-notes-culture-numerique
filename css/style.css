@@ -230,6 +230,23 @@ body{
   visibility: hidden;
 }
 
+.config-extra{
+  margin-top: 14px;
+}
+
+.config-label{
+  display:block;
+  margin-bottom:8px;
+  font-size:13px;
+  color:var(--text-muted);
+  font-weight:800;
+}
+
+.config-extra .form-select{
+  width:100%;
+  min-width:0;
+}
+
 /*
    Imports (cartes fichiers)
 */

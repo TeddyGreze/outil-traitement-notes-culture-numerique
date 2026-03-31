@@ -405,7 +405,52 @@
     return s;
   }
 
-  CN.traitement.remplirPegase = function (pegase, mappingPegase, notes) {
+  function normaliserModeRemplissage(mode) {
+    const m = (mode ?? "").toString().trim();
+
+    const modesAutorises = new Set([
+      "ne_rien_ecraser",
+      "ecraser_systematiquement",
+      "si_nouvelle_superieure",
+      "si_ancienne_lt10_et_nouvelle_gt10"
+    ]);
+
+    return modesAutorises.has(m) ? m : "ne_rien_ecraser";
+  }
+
+  function peutRemplacerNote(valeurExistante, nouvelleNote, modeRemplissage) {
+    if (celluleVide(valeurExistante)) return true;
+
+    const mode = normaliserModeRemplissage(modeRemplissage);
+
+    if (mode === "ne_rien_ecraser") {
+      return false;
+    }
+
+    if (mode === "ecraser_systematiquement") {
+      return true;
+    }
+
+    const ancienneNote = CN.data.toNombreFR(valeurExistante);
+    const ancienneNoteValide = Number.isFinite(ancienneNote);
+    const nouvelleNoteValide = Number.isFinite(nouvelleNote);
+
+    if (!ancienneNoteValide || !nouvelleNoteValide) {
+      return false;
+    }
+
+    if (mode === "si_nouvelle_superieure") {
+      return nouvelleNote > ancienneNote;
+    }
+
+    if (mode === "si_ancienne_lt10_et_nouvelle_gt10") {
+      return ancienneNote < 10 && nouvelleNote > 10;
+    }
+
+    return false;
+  }
+
+  CN.traitement.remplirPegase = function (pegase, mappingPegase, notes, modeRemplissage) {
     const lignesOut = pegase.lignes.map(r => ({ ...r }));
     let nbEcrits = 0;
     let nbIgnores = 0;
@@ -417,6 +462,7 @@
     const delim = mappingPegase.delimiteur || ";";
     const sessionCible = detecterNumeroSession(mappingPegase.colNote);
     const colSession1 = (sessionCible === 2) ? trouverColonneNoteSession(pegase.entetes, 1) : null;
+    const mode = normaliserModeRemplissage(modeRemplissage);
 
     // N°étudiants PEGASE pour repérer ceux qui ont une note mais sont hors PEGASE
     const idsPegase = new Set();
@@ -430,11 +476,7 @@
       const id = (r[mappingPegase.colId] ?? "").toString().trim();
       if (!id) continue;
 
-      // si la cellule note est déjà remplie : on ne touche pas
-      if (!celluleVide(r[mappingPegase.colNote])) {
-        nbIgnores++;
-        continue;
-      }
+      const valeurExistante = r[mappingPegase.colNote];
 
       // Si on remplit NOTE_SESSION_2: si NOTE_SESSION_1 >= 10, on ne remplit pas la session 2
       if (sessionCible === 2 && colSession1) {
@@ -446,12 +488,24 @@
       }
 
       const n = notes.get(id);
+
+      // Si l'étudiant a une note calculée
       if (n) {
-        r[mappingPegase.colNote] = formaterNoteCSV(n.noteFinale, modeleNote, delim);
-        nbEcrits++;
-      } else {
+        if (peutRemplacerNote(valeurExistante, n.noteFinale, mode)) {
+          r[mappingPegase.colNote] = formaterNoteCSV(n.noteFinale, modeleNote, delim);
+          nbEcrits++;
+        } else {
+          nbIgnores++;
+        }
+        continue;
+      }
+
+      // Si l'étudiant n'a pas de note calculée, on met ABI seulement si la cellule est vide
+      if (celluleVide(valeurExistante)) {
         r[mappingPegase.colNote] = "ABI";
         nbABI++;
+      } else {
+        nbIgnores++;
       }
     }
 

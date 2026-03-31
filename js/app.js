@@ -412,7 +412,9 @@
     if (!Number.isFinite(ptsPres)) ptsPres = 0;
     if (!Number.isFinite(ptsRD)) ptsRD = 0;
 
-    return { usePix, usePres, useRD, ptsPix, ptsPres, ptsRD };
+    const modeRemplissage = (CN.el.modeRemplissage?.value || "ne_rien_ecraser").toString();
+
+    return { usePix, usePres, useRD, ptsPix, ptsPres, ptsRD, modeRemplissage };
   };
 
   CN.app.config.nbComposantesSelectionnees = function (cfg) {
@@ -717,7 +719,12 @@
     const build = CN.traitement.construireNotes(cfg, CN.etat.pix, CN.etat.pres, CN.etat.rd);
 
     const remplissage = avecPegase
-      ? CN.traitement.remplirPegase(CN.etat.pegase, CN.etat.mappingPegase, build.notes)
+      ? CN.traitement.remplirPegase(
+        CN.etat.pegase,
+        CN.etat.mappingPegase,
+        build.notes,
+        cfg.modeRemplissage
+      )
       : { lignesOut: [], nbEcrits: 0, nbIgnores: 0, nbABI: 0, inconnus: [] };
 
     const ana = CN.traitement.analyserAnomalies(
@@ -737,7 +744,13 @@
     CN.etat.anomaliesParId = ana.anomaliesParId;
 
     // Construction de l’aperçu (table principale)
-    CN.etat.apercu = CN.affichage.rendreTableApercu(CN.etat.pegase, CN.etat.mappingPegase, CN.etat.notes, CN.etat.anomaliesParId, cfg);
+    CN.etat.apercu = CN.affichage.rendreTableApercu(
+      CN.etat.pegase,
+      CN.etat.mappingPegase,
+      CN.etat.notes,
+      CN.etat.anomaliesParId,
+      cfg
+    );
 
     // Résumé
     CN.el.resume.innerHTML = "";
@@ -1197,7 +1210,8 @@
   // Gestion des événements (clics / input / clavier)
   CN.app.main.bind = function () {
     // Changement config
-    [CN.el.usePix, CN.el.usePres, CN.el.useRD, CN.el.ptsPix, CN.el.ptsPres, CN.el.ptsRD].forEach(x => {
+    [CN.el.usePix, CN.el.usePres, CN.el.useRD, CN.el.ptsPix, CN.el.ptsPres, CN.el.ptsRD, CN.el.modeRemplissage].forEach(x => {
+      if (!x) return;
       x.addEventListener("change", CN.app.config.appliquerReglesConfig);
       x.addEventListener("input", CN.app.config.appliquerReglesConfig);
     });

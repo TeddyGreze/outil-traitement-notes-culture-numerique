@@ -25,6 +25,21 @@
     return raw;
   }
 
+  function libelleModeRemplissage(mode) {
+    const m = (mode ?? "").toString();
+
+    if (m === "ecraser_systematiquement") {
+      return "Écraser systématiquement";
+    }
+    if (m === "si_nouvelle_superieure") {
+      return "Remplacer seulement si la nouvelle note est supérieure";
+    }
+    if (m === "si_ancienne_lt10_et_nouvelle_gt10") {
+      return "Remplacer seulement si l'ancienne note est < 10 et la nouvelle > 10";
+    }
+    return "Ne rien écraser";
+  }
+
   /*
      Construire les données du tableau "aperçu"
      - entetes : ordre des colonnes à afficher
@@ -269,7 +284,9 @@
     wrap.innerHTML = `
     <div class="alerte info" style="flex:1">
       <b>Résumé</b><br/>
-      Composantes : <b>${comp.join(" ; ")}</b> (sur /20)<br/><br/>
+      Composantes : <b>${comp.join(" ; ")}</b> (sur /20)<br/>
+      ${stats.avecPegase ? `Mode PEGASE : <b>${libelleModeRemplissage(config.modeRemplissage)}</b><br/>` : ``}
+      <br/>
 
       ${stats.avecPegase ? `PEGASE : ${stats.pegaseLignes} lignes<br/>` : ``}
       ${config.usePix ? `PIX : ${stats.pixValides} valides - invalides : ${stats.pixInvalides}<br/>` : ``}
