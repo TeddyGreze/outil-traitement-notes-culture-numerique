@@ -216,6 +216,7 @@
 
     let entetes = [];
     let delim = ";";
+    let lignesPreview = [];
 
     // Si on change de modal, on enlève l’UI avancée PIX
     CN.app.modal.detruirePixAdvancedUI();
@@ -223,12 +224,12 @@
     // PEGASE
     if (type === "pegase") {
       if (!fPeg) return CN.ui.ajouterMessage("warn", "Veuillez d'abord sélectionner le fichier PEGASE.");
-      const r = await CN.imports.lireEntetesCSV(fPeg);
-      entetes = r.entetes; delim = r.delim;
+      const r = await CN.imports.lireApercuCSV(fPeg);
+      entetes = r.entetes; delim = r.delim; lignesPreview = r.lignes;
       CN.etat.entetesPegase = entetes;
       CN.etat.mappingPegase.delimiteur = delim;
 
-      const def = CN.imports.proposerMappingPegase(entetes);
+      const def = CN.imports.proposerMappingPegase(entetes, lignesPreview);
       const current = CN.app.util.fusionMapping(def, CN.etat.mappingPegase, entetes);
 
       modalCtx = {
@@ -244,11 +245,11 @@
     // RD
     if (type === "rd") {
       if (!fRD) return CN.ui.ajouterMessage("warn", "Veuillez d'abord sélectionner le fichier Recherche documentaire.");
-      const r = await CN.imports.lireEntetesCSV(fRD);
-      entetes = r.entetes; delim = r.delim;
+      const r = await CN.imports.lireApercuCSV(fRD);
+      entetes = r.entetes; delim = r.delim; lignesPreview = r.lignes;
       CN.etat.entetesRD = entetes;
 
-      const def = CN.imports.proposerMappingRD(entetes);
+      const def = CN.imports.proposerMappingRD(entetes, lignesPreview);
       const current = CN.app.util.fusionMapping(def, CN.etat.mappingRD, entetes);
 
       modalCtx = {
@@ -264,11 +265,11 @@
     // PIX
     if (type === "pix") {
       if (!fPix) return CN.ui.ajouterMessage("warn", "Veuillez d'abord sélectionner le fichier PIX.");
-      const r = await CN.imports.lireEntetesCSV(fPix);
-      entetes = r.entetes; delim = r.delim;
+      const r = await CN.imports.lireApercuCSV(fPix);
+      entetes = r.entetes; delim = r.delim; lignesPreview = r.lignes;
       CN.etat.entetesPix = entetes;
 
-      const def = CN.imports.proposerMappingPIX(entetes);
+      const def = CN.imports.proposerMappingPIX(entetes, lignesPreview);
       const current = CN.app.util.fusionMapping(def, CN.etat.mappingPix, entetes);
 
       modalCtx = {
@@ -282,11 +283,11 @@
     // Présences
     if (type === "pres") {
       if (!fPres.length) return CN.ui.ajouterMessage("warn", "Veuillez d'abord sélectionner au moins un fichier de présences.");
-      const r = await CN.imports.lireEntetesCSV(fPres[0]);
-      entetes = r.entetes; delim = r.delim;
+      const r = await CN.imports.lireApercuCSV(fPres[0]);
+      entetes = r.entetes; delim = r.delim; lignesPreview = r.lignes;
       CN.etat.entetesPres = entetes;
 
-      const def = CN.imports.proposerMappingPres(entetes);
+      const def = CN.imports.proposerMappingPres(entetes, lignesPreview);
       const current = CN.app.util.fusionMapping(def, CN.etat.mappingPres, entetes);
 
       modalCtx = {
@@ -640,7 +641,7 @@
       CN.etat.entetesPegase = CN.etat.pegase.entetes;
 
       // On s’assure que le mapping PEGASE est cohérent avec les entêtes
-      const defPeg = CN.imports.proposerMappingPegase(CN.etat.pegase.entetes);
+      const defPeg = CN.imports.proposerMappingPegase(CN.etat.pegase.entetes, CN.etat.pegase.lignes);
       const mergedPeg = CN.app.util.fusionMapping(defPeg, CN.etat.mappingPegase, CN.etat.pegase.entetes);
       CN.etat.mappingPegase.colId = mergedPeg.colId;
       CN.etat.mappingPegase.colNom = mergedPeg.colNom;
@@ -678,7 +679,7 @@
       CN.etat.entetesRD = CN.etat.rdRaw.entetes;
 
       // Mise à jour mapping RD selon les entêtes
-      const defRD = CN.imports.proposerMappingRD(CN.etat.rdRaw.entetes);
+      const defRD = CN.imports.proposerMappingRD(CN.etat.rdRaw.entetes, CN.etat.rdRaw.lignes);
       const mergedRD = CN.app.util.fusionMapping(defRD, CN.etat.mappingRD, CN.etat.rdRaw.entetes);
       CN.etat.mappingRD.colId = mergedRD.colId;
       CN.etat.mappingRD.colNom = mergedRD.colNom;

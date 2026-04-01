@@ -22,8 +22,16 @@
       .toString()
       .normalize("NFD")
       .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[_\-\/()]+/g, " ")
+      .replace(/\s+/g, " ")
       .trim()
       .toUpperCase();
+  };
+
+  // Découpe un texte normalisé en mots
+  CN.data.tokeniserTexte = function (s) {
+    const n = CN.data.nettoyerTexte(s);
+    return n ? n.split(" ") : [];
   };
 
   // Vérifie un numéro étudiant : exactement 8 chiffres
@@ -157,22 +165,135 @@
     return { entetes, lignes: out };
   };
 
+  // Analyse du contenu d’une colonne
+  // Sert à améliorer la détection quand l’intitulé n’est pas très clair
+  CN.csv.analyserColonne = function (lignes, entete, maxLignes = 30) {
+    const stats = {
+      nbValeurs: 0,
+      nbNumeriques: 0,
+      nbIdsValides: 0,
+      nbDigits: 0,
+      nbOuiNon: 0,
+      nb0a1: 0,
+      nb0a5: 0,
+      nb0a20: 0,
+      nb0a100: 0
+    };
+
+    if (!Array.isArray(lignes) || !entete) return stats;
+
+    for (let i = 0; i < lignes.length && stats.nbValeurs < maxLignes; i++) {
+      const v = (lignes[i]?.[entete] ?? "").toString().trim();
+      if (!v) continue;
+
+      stats.nbValeurs++;
+
+      const norm = CN.data.nettoyerTexte(v);
+      const n = CN.data.toNombreFR(v);
+
+      if (CN.data.estNumeroEtudiantValide(v)) stats.nbIdsValides++;
+      if (/^[0-9]{6,10}$/.test(v)) stats.nbDigits++;
+      if (norm === "OUI" || norm === "NON" || norm === "O" || norm === "N") stats.nbOuiNon++;
+
+      if (Number.isFinite(n)) {
+        stats.nbNumeriques++;
+        if (n >= 0 && n <= 1) stats.nb0a1++;
+        if (n >= 0 && n <= 5) stats.nb0a5++;
+        if (n >= 0 && n <= 20) stats.nb0a20++;
+        if (n >= 0 && n <= 100) stats.nb0a100++;
+      }
+    }
+
+    return stats;
+  };
+
   // Trouve une colonne dans des en-têtes à partir d’une liste de noms possibles
   // 1) match exact
   // 2) sinon match “contient”
-  CN.csv.trouverColonne = function (entetes, candidats) {
-    const entN = entetes.map(CN.data.nettoyerTexte);
+  // 3) sinon score léger sur les mots
+  // 4) si on a les lignes, on regarde le contenu
+  CN.csv.trouverColonne = function (entetes, candidats, lignes, options = {}) {
+    const excludes = options.exclude instanceof Set
+      ? options.exclude
+      : new Set(options.exclude || []);
+
+    const entetesUtiles = (entetes || []).filter(h => h && !excludes.has(h));
+    const entN = entetesUtiles.map(CN.data.nettoyerTexte);
+
+    // 1) match exact
     for (const c of candidats) {
       const idx = entN.indexOf(CN.data.nettoyerTexte(c));
-      if (idx !== -1) return entetes[idx];
+      if (idx !== -1) return entetesUtiles[idx];
     }
-    for (let i = 0; i < entetes.length; i++) {
-      const n = CN.data.nettoyerTexte(entetes[i]);
+
+    // 2) match “contient”
+    for (let i = 0; i < entetesUtiles.length; i++) {
+      const n = CN.data.nettoyerTexte(entetesUtiles[i]);
       for (const c of candidats) {
-        if (n.includes(CN.data.nettoyerTexte(c))) return entetes[i];
+        if (n.includes(CN.data.nettoyerTexte(c))) return entetesUtiles[i];
       }
     }
-    return null;
+
+    // 3) score sur les mots des intitulés
+    let bestCol = null;
+    let bestScore = -1;
+
+    for (const h of entetesUtiles) {
+      const tokensH = CN.data.tokeniserTexte(h);
+      let score = 0;
+
+      for (const c of candidats) {
+        const tokensC = CN.data.tokeniserTexte(c);
+        if (!tokensC.length) continue;
+
+        let communs = 0;
+        for (const t of tokensC) {
+          if (tokensH.includes(t)) communs++;
+        }
+
+        if (communs > 0) {
+          const s = (communs / tokensC.length) * 100;
+          if (s > score) score = s;
+        }
+      }
+
+      // 4) bonus selon le contenu de la colonne
+      if (Array.isArray(lignes) && lignes.length) {
+        const stats = CN.csv.analyserColonne(lignes, h);
+        const cible = CN.data.nettoyerTexte(candidats.join(" "));
+
+        if (cible.includes("ETUDIANT") || cible.includes("APPRENANT")) {
+          score += stats.nbIdsValides * 8 + stats.nbDigits * 2;
+        }
+
+        if (cible.includes("PARTAGE")) {
+          score += stats.nbOuiNon * 6;
+        }
+
+        if (cible.includes("PROGRESSION")) {
+          score += stats.nb0a1 * 4 + stats.nb0a100 * 2;
+        }
+
+        if (cible.includes("MAITRISE")) {
+          score += stats.nb0a1 * 5;
+        }
+
+        if (cible.includes("/5") || cible.includes("SCORE 5") || cible.includes("NOTE 5")) {
+          score += stats.nb0a5 * 4;
+        }
+
+        if (cible.includes("/20") || cible.includes("NOTE 20") || cible.includes("NOTE")) {
+          score += stats.nb0a20 * 2;
+        }
+      }
+
+      if (score > bestScore) {
+        bestScore = score;
+        bestCol = h;
+      }
+    }
+
+    return bestScore >= 50 ? bestCol : null;
   };
 
   // Génération + téléchargement CSV

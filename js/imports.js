@@ -20,12 +20,25 @@
     return { delim, entetes };
   };
 
+  // Lecture d’un petit aperçu du CSV
+  // Sert à améliorer l’auto-détection des colonnes
+  CN.imports.lireApercuCSV = async function (file, maxLignes = 30) {
+    const txt = await CN.csv.lireFichierTexte(file);
+    const delim = CN.csv.detecterDelimiteur(txt.split("\n")[0] || ";");
+    const tab = CN.csv.parserCSV(txt, delim);
+    const { entetes, lignes } = CN.csv.tableauVersObjets(tab);
+    return { delim, entetes, lignes: lignes.slice(0, maxLignes) };
+  };
+
   // Trouver une colonne par “nom possible”
-  function detecterColonne(entetes, candidats) {
-    const upper = entetes.map(x => CN.data.nettoyerTexte(x));
-    for (const cand of candidats) {
-      const idx = upper.indexOf(CN.data.nettoyerTexte(cand));
-      if (idx !== -1) return entetes[idx];
+  function detecterColonne(entetes, candidats, lignes, exclude = new Set()) {
+    return CN.csv.trouverColonne(entetes, candidats, lignes, { exclude });
+  }
+
+  // Renvoie la première colonne non encore utilisée
+  function premiereColonneLibre(entetes, dejaPris) {
+    for (const h of entetes) {
+      if (h && !dejaPris.has(h)) return h;
     }
     return null;
   }
@@ -33,58 +46,248 @@
   // Propositions de mapping (auto-détection des colonnes)
 
   // PEGASE : on essaie d’identifier ID / NOM / PRÉNOM / NOTE
-  CN.imports.proposerMappingPegase = function (entetes) {
-    const colId = detecterColonne(entetes, ["CODE_APPRENANT", "NUM_ETUDIANT", "NO_ETUDIANT", "N_ETUDIANT", "ETUDIANT"]);
-    const colNom = detecterColonne(entetes, ["NOM_FAMILLE", "NOM", "NOM_ETUDIANT"]);
-    const colPrenom = detecterColonne(entetes, ["PRENOM", "PRENOMS"]);
+  CN.imports.proposerMappingPegase = function (entetes, lignes = []) {
+    const dejaPris = new Set();
+
+    const colId = detecterColonne(entetes, [
+      "CODE_APPRENANT",
+      "CODE APPRENANT",
+      "NUM_ETUDIANT",
+      "NUM ETUDIANT",
+      "NUMERO ETUDIANT",
+      "NO_ETUDIANT",
+      "NO ETUDIANT",
+      "N_ETUDIANT",
+      "N ETUDIANT",
+      "N° ETUDIANT",
+      "ID ETUDIANT",
+      "ETUDIANT"
+    ], lignes, dejaPris);
+
+    if (colId) dejaPris.add(colId);
+
+    const colNom = detecterColonne(entetes, [
+      "NOM_FAMILLE",
+      "NOM FAMILLE",
+      "NOM",
+      "NOM_ETUDIANT",
+      "NOM ETUDIANT"
+    ], lignes, dejaPris);
+
+    if (colNom) dejaPris.add(colNom);
+
+    const colPrenom = detecterColonne(entetes, [
+      "PRENOM",
+      "PRENOMS",
+      "PRENOM ETUDIANT"
+    ], lignes, dejaPris);
+
+    if (colPrenom) dejaPris.add(colPrenom);
+
     const colNote =
-      detecterColonne(entetes, ["NOTE_SESSION_1", "NOTE_SESSION_2", "NOTE", "NOTE_UE"]) ||
-      entetes.find(x => CN.data.nettoyerTexte(x).includes("NOTE")) ||
+      detecterColonne(entetes, [
+        "NOTE_SESSION_1",
+        "NOTE SESSION 1",
+        "NOTE_SESSION_2",
+        "NOTE SESSION 2",
+        "NOTE",
+        "NOTE_UE",
+        "NOTE UE",
+        "MOYENNE",
+        "RESULTAT"
+      ], lignes, dejaPris) ||
+      entetes.find(x => !dejaPris.has(x) && CN.data.nettoyerTexte(x).includes("NOTE")) ||
       null;
 
-    // Si rien trouvé, on prend les premières colonnes
+    // Si rien trouvé, on prend les premières colonnes libres
     return {
-      colId: colId || entetes[0] || null,
-      colNom: colNom || entetes[1] || null,
-      colPrenom: colPrenom || entetes[2] || null,
-      colNote: colNote || entetes[3] || null
+      colId: colId || premiereColonneLibre(entetes, dejaPris) || entetes[0] || null,
+      colNom: colNom || premiereColonneLibre(entetes, dejaPris) || entetes[1] || null,
+      colPrenom: colPrenom || premiereColonneLibre(entetes, dejaPris) || entetes[2] || null,
+      colNote: colNote || premiereColonneLibre(entetes, dejaPris) || entetes[3] || null
     };
   };
 
   // RD : N° étudiant, Nom, Prénom, Note
-  CN.imports.proposerMappingRD = function (entetes) {
-    const colId = CN.csv.trouverColonne(entetes, ["N° étudiant", "N° Étudiant", "N_ETUDIANT", "NUM_ETUDIANT"]);
-    const colNom = CN.csv.trouverColonne(entetes, ["Nom", "NOM", "NOM_FAMILLE"]);
-    const colPrenom = CN.csv.trouverColonne(entetes, ["Prénom", "Prenom", "PRENOM"]);
-    const colNote = CN.csv.trouverColonne(entetes, ["Note Recherche", "NOTE_RECHERCHE", "NOTE_RD", "NOTE", "NOTE /20", "NOTE/20"]);
+  CN.imports.proposerMappingRD = function (entetes, lignes = []) {
+    const dejaPris = new Set();
+
+    const colId = detecterColonne(entetes, [
+      "N° étudiant",
+      "N° Étudiant",
+      "NUM_ETUDIANT",
+      "NUM ETUDIANT",
+      "NUMERO ETUDIANT",
+      "N_ETUDIANT",
+      "N ETUDIANT",
+      "ID ETUDIANT"
+    ], lignes, dejaPris);
+
+    if (colId) dejaPris.add(colId);
+
+    const colNom = detecterColonne(entetes, [
+      "Nom",
+      "NOM",
+      "NOM_FAMILLE",
+      "NOM FAMILLE"
+    ], lignes, dejaPris);
+
+    if (colNom) dejaPris.add(colNom);
+
+    const colPrenom = detecterColonne(entetes, [
+      "Prénom",
+      "Prenom",
+      "PRENOM",
+      "PRENOMS"
+    ], lignes, dejaPris);
+
+    if (colPrenom) dejaPris.add(colPrenom);
+
+    const colNote = detecterColonne(entetes, [
+      "Note Recherche documentaire",
+      "NOTE RECHERCHE DOCUMENTAIRE",
+      "Note Recherche",
+      "NOTE_RECHERCHE",
+      "NOTE RECHERCHE",
+      "NOTE_RD",
+      "NOTE RD",
+      "NOTE /20",
+      "NOTE/20",
+      "NOTE SUR 20",
+      "NOTE 20",
+      "NOTE"
+    ], lignes, dejaPris);
+
     return { colId, colNom, colPrenom, colNote };
   };
 
   // PIX : N° étudiant + NOM/PRÉNOM + progression + partage + score
-  CN.imports.proposerMappingPIX = function (entetes) {
-    const colId = CN.csv.trouverColonne(entetes, ["N° Étudiant", "N° étudiant", "N_ETUDIANT", "NUM_ETUDIANT"]);
-    const colNom = CN.csv.trouverColonne(entetes, ["Nom du Participant", "Nom du participant", "Nom"]);
-    const colPrenom = CN.csv.trouverColonne(entetes, ["Prénom du Participant", "Prenom du Participant", "Prénom", "Prenom"]);
+  CN.imports.proposerMappingPIX = function (entetes, lignes = []) {
+    const dejaPris = new Set();
 
-    const colProg = CN.csv.trouverColonne(entetes, ["% de progression", "progression", "% progression"]);
-    const colShare = CN.csv.trouverColonne(entetes, ["Partage (O/N)", "Partage", "Partage O/N"]);
-    const colScore = CN.csv.trouverColonne(entetes, [
+    const colId = detecterColonne(entetes, [
+      "N° Étudiant",
+      "N° étudiant",
+      "NUM_ETUDIANT",
+      "NUM ETUDIANT",
+      "NUMERO ETUDIANT",
+      "N_ETUDIANT",
+      "N ETUDIANT",
+      "ID ETUDIANT"
+    ], lignes, dejaPris);
+
+    if (colId) dejaPris.add(colId);
+
+    const colNom = detecterColonne(entetes, [
+      "Nom du Participant",
+      "Nom du participant",
+      "NOM DU PARTICIPANT",
+      "NOM PARTICIPANT",
+      "Nom",
+      "NOM"
+    ], lignes, dejaPris);
+
+    if (colNom) dejaPris.add(colNom);
+
+    const colPrenom = detecterColonne(entetes, [
+      "Prénom du Participant",
+      "Prenom du Participant",
+      "PRENOM DU PARTICIPANT",
+      "PRENOM PARTICIPANT",
+      "Prénom",
+      "Prenom",
+      "PRENOM"
+    ], lignes, dejaPris);
+
+    if (colPrenom) dejaPris.add(colPrenom);
+
+    const colProg = detecterColonne(entetes, [
+      "% de progression",
+      "% progression",
+      "PROGRESSION",
+      "TAUX DE PROGRESSION"
+    ], lignes, dejaPris);
+
+    if (colProg) dejaPris.add(colProg);
+
+    const colShare = detecterColonne(entetes, [
+      "Partage (O/N)",
+      "PARTAGE O/N",
+      "PARTAGE",
+      "PARTAGE OUI NON"
+    ], lignes, dejaPris);
+
+    if (colShare) dejaPris.add(colShare);
+
+    const colScore = detecterColonne(entetes, [
       "% maitrise de l'ensemble des acquis du profil",
       "% maîtrise de l'ensemble des acquis du profil",
-      "% maîtrise",
       "% maitrise",
-      "maitrise"
-    ]);
+      "% maîtrise",
+      "TAUX DE MAITRISE",
+      "MAITRISE",
+      "SCORE PIX",
+      "SCORE"
+    ], lignes, dejaPris);
 
     return { colId, colNom, colPrenom, colProg, colShare, colScore };
   };
 
   // Présences : N° étudiant + NOM/PRÉNOM + score /5
-  CN.imports.proposerMappingPres = function (entetes) {
-    const colId = CN.csv.trouverColonne(entetes, ["N° étudiant", "N° Étudiant", "N_ETUDIANT", "NUM_ETUDIANT"]);
-    const colNom = CN.csv.trouverColonne(entetes, ["Nom", "NOM"]);
-    const colPrenom = CN.csv.trouverColonne(entetes, ["Prénom", "Prenom", "PRENOM"]);
-    const colScore5 = CN.csv.trouverColonne(entetes, ["Score /5", "SCORE/5", "SCORE /5", "SCORE_5"]);
+  CN.imports.proposerMappingPres = function (entetes, lignes = []) {
+    const dejaPris = new Set();
+
+    const colId = detecterColonne(entetes, [
+      "N° étudiant",
+      "N° Étudiant",
+      "NUM_ETUDIANT",
+      "NUM ETUDIANT",
+      "NUMERO ETUDIANT",
+      "N_ETUDIANT",
+      "N ETUDIANT",
+      "ID ETUDIANT"
+    ], lignes, dejaPris);
+
+    if (colId) dejaPris.add(colId);
+
+    const colNom = detecterColonne(entetes, [
+      "Nom",
+      "NOM",
+      "NOM_FAMILLE",
+      "NOM FAMILLE"
+    ], lignes, dejaPris);
+
+    if (colNom) dejaPris.add(colNom);
+
+    const colPrenom = detecterColonne(entetes, [
+      "Prénom",
+      "Prenom",
+      "PRENOM",
+      "PRENOMS"
+    ], lignes, dejaPris);
+
+    if (colPrenom) dejaPris.add(colPrenom);
+
+    const colScore5 = detecterColonne(entetes, [
+      "Score /5",
+      "SCORE/5",
+      "SCORE /5",
+      "SCORE_5",
+      "SCORE SUR 5",
+      "NOTE /5",
+      "NOTE/5",
+      "NOTE SUR 5",
+      "RESULTAT /5",
+      "RESULTAT SUR 5",
+      "POINTS /5",
+      "POINTS SUR 5",
+      "TOTAL /5",
+      "TOTAL SUR 5",
+      "SCORE PRESENCE",
+      "NOTE PRESENCE",
+      "PRESENCE /5"
+    ], lignes, dejaPris);
+
     return { colId, colNom, colPrenom, colScore5 };
   };
 
@@ -113,7 +316,7 @@
     const tab = CN.csv.parserCSV(txt, delim);
     const { entetes, lignes } = CN.csv.tableauVersObjets(tab);
 
-    const auto = CN.imports.proposerMappingPIX(entetes);
+    const auto = CN.imports.proposerMappingPIX(entetes, lignes);
 
     const colId = mappingPix?.colId || auto.colId;
     const colProg = mappingPix?.colProg || auto.colProg;
@@ -225,7 +428,7 @@
       const tab = CN.csv.parserCSV(txt, delim);
       const { entetes, lignes } = CN.csv.tableauVersObjets(tab);
 
-      const auto = CN.imports.proposerMappingPres(entetes);
+      const auto = CN.imports.proposerMappingPres(entetes, lignes);
 
       const colId = mappingPres?.colId || auto.colId;
       const colNom = mappingPres?.colNom || auto.colNom;
