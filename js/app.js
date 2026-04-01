@@ -154,8 +154,11 @@
   CN.app.modal.rendreVueModalPix = function () {
     if (!modalCtx || modalCtx.type !== "pix") return;
 
-    CN.el.modalHint.textContent =
-      "Veuillez sélectionner les colonnes correspondant aux champs PIX.";
+    const advManquantes = !modalCtx.mapping.colProg || !modalCtx.mapping.colShare;
+
+    CN.el.modalHint.textContent = advManquantes
+      ? "Veuillez sélectionner les colonnes correspondant aux champs PIX. Les colonnes « % progression » et « Partage (O/N) » se trouvent dans « Options avancées »."
+      : "Veuillez sélectionner les colonnes correspondant aux champs PIX.";
 
     // Champs principaux (toujours visibles)
     CN.ui.afficherBloc(CN.el.mapRow1, true);
@@ -178,6 +181,14 @@
     if (modalCtx.pixUI?.selProg && modalCtx.pixUI?.selShare) {
       CN.app.util.remplirSelect(modalCtx.pixUI.selProg, modalCtx.entetes, modalCtx.mapping.colProg || "");
       CN.app.util.remplirSelect(modalCtx.pixUI.selShare, modalCtx.entetes, modalCtx.mapping.colShare || "");
+    }
+
+    // Si progression/partage manque, on ouvre directement les options avancées
+    const advPanel = document.getElementById("pixAdvPanel");
+    const advBtn = document.getElementById("btnPixAdv");
+    if (advManquantes && advPanel && advBtn) {
+      CN.ui.afficherBloc(advPanel, true);
+      advBtn.innerHTML = `Masquer les options avancées <span class="chev">▴</span>`;
     }
   };
 
@@ -342,7 +353,7 @@
     CN.ui.afficherBloc(CN.el.modalOverlay, false);
   };
 
-  // Enregistre le mapping choisi, puis relance un recalcul si PEGASE est déjà chargé
+  // Enregistre le mapping choisi, puis relance proprement l’analyse
   CN.app.modal.enregistrerModalMapping = async function () {
     if (!modalCtx) return;
 
@@ -369,7 +380,6 @@
       CN.etat.mappingPix.colNom = modalCtx.mapping.colNom;
       CN.etat.mappingPix.colPrenom = modalCtx.mapping.colPrenom;
       CN.etat.mappingPix.colScore = modalCtx.mapping.colScore;
-
       CN.etat.mappingPix.colProg = modalCtx.mapping.colProg;
       CN.etat.mappingPix.colShare = modalCtx.mapping.colShare;
     }
@@ -381,14 +391,21 @@
       CN.etat.mappingPres.colScore5 = modalCtx.mapping.colScore5;
     }
 
-    const typeSauve = modalCtx.type;
     CN.app.modal.fermerModalMapping();
 
-    if (CN.etat.pegase || CN.etat.pix || CN.etat.pres || CN.etat.rdRaw || CN.etat.rd) {
+    const aDesFichiersSelectionnes =
+      !!(CN.el.fichierPegase.files && CN.el.fichierPegase.files.length) ||
+      !!(CN.el.fichierPix.files && CN.el.fichierPix.files.length) ||
+      !!(CN.el.fichiersPresences.files && CN.el.fichiersPresences.files.length) ||
+      !!(CN.el.fichierRD.files && CN.el.fichierRD.files.length);
+
+    if (aDesFichiersSelectionnes) {
       try {
-        await CN.app.pipeline.reimporterSiBesoin(typeSauve);
-        await CN.app.pipeline.recalculer();
-        CN.ui.ajouterMessage("ok", "Paramétrage enregistré et recalcul effectué.");
+        await CN.app.pipeline.executerAnalyse();
+
+        if (!modalCtx) {
+          CN.ui.ajouterMessage("ok", "Paramétrage enregistré et analyse relancée.");
+        }
       } catch (e) {
         CN.ui.ajouterMessage("danger", "Erreur après enregistrement du paramétrage : " + e.message);
         console.error(e);
@@ -606,6 +623,82 @@
     }
   };
 
+  // Vérifie les mappings nécessaires avant les imports
+  CN.app.pipeline.verifierMappingsAvantImport = async function (cfg) {
+    // PIX
+    if (cfg.usePix) {
+      const fPix = CN.el.fichierPix.files[0] || null;
+      if (fPix) {
+        const rPix = await CN.imports.lireApercuCSV(fPix);
+        CN.etat.entetesPix = rPix.entetes;
+
+        const defPix = CN.imports.proposerMappingPIX(rPix.entetes, rPix.lignes);
+        const mergedPix = CN.app.util.fusionMapping(defPix, CN.etat.mappingPix, rPix.entetes);
+
+        CN.etat.mappingPix.colId = mergedPix.colId;
+        CN.etat.mappingPix.colNom = mergedPix.colNom;
+        CN.etat.mappingPix.colPrenom = mergedPix.colPrenom;
+        CN.etat.mappingPix.colScore = mergedPix.colScore;
+        CN.etat.mappingPix.colProg = mergedPix.colProg;
+        CN.etat.mappingPix.colShare = mergedPix.colShare;
+
+        if (!CN.app.util.mappingComplet(CN.etat.mappingPix, ["colId", "colScore", "colProg", "colShare"])) {
+          CN.ui.ajouterMessage("warn", "PIX : paramétrage requis - veuillez sélectionner les colonnes, puis cliquer sur « Enregistrer ».");
+          await CN.app.modal.ouvrirModalMapping("pix");
+          return false;
+        }
+      }
+    }
+
+    // Présences
+    if (cfg.usePres) {
+      const fPres = Array.from(CN.el.fichiersPresences.files || []);
+      if (fPres.length) {
+        const rPres = await CN.imports.lireApercuCSV(fPres[0]);
+        CN.etat.entetesPres = rPres.entetes;
+
+        const defPres = CN.imports.proposerMappingPres(rPres.entetes, rPres.lignes);
+        const mergedPres = CN.app.util.fusionMapping(defPres, CN.etat.mappingPres, rPres.entetes);
+
+        CN.etat.mappingPres.colId = mergedPres.colId;
+        CN.etat.mappingPres.colNom = mergedPres.colNom;
+        CN.etat.mappingPres.colPrenom = mergedPres.colPrenom;
+        CN.etat.mappingPres.colScore5 = mergedPres.colScore5;
+
+        if (!CN.app.util.mappingComplet(CN.etat.mappingPres, ["colId", "colNom", "colPrenom", "colScore5"])) {
+          CN.ui.ajouterMessage("warn", "Présences : paramétrage requis - veuillez sélectionner les colonnes, puis cliquer sur « Enregistrer ».");
+          await CN.app.modal.ouvrirModalMapping("pres");
+          return false;
+        }
+      }
+    }
+
+    // RD
+    if (cfg.useRD) {
+      const fRD = CN.el.fichierRD.files[0] || null;
+      if (fRD) {
+        const rRD = await CN.imports.lireApercuCSV(fRD);
+        CN.etat.entetesRD = rRD.entetes;
+
+        const defRD = CN.imports.proposerMappingRD(rRD.entetes, rRD.lignes);
+        const mergedRD = CN.app.util.fusionMapping(defRD, CN.etat.mappingRD, rRD.entetes);
+
+        CN.etat.mappingRD.colId = mergedRD.colId;
+        CN.etat.mappingRD.colNom = mergedRD.colNom;
+        CN.etat.mappingRD.colPrenom = mergedRD.colPrenom;
+        CN.etat.mappingRD.colNote = mergedRD.colNote;
+
+        if (!CN.app.util.mappingComplet(CN.etat.mappingRD, ["colId", "colNom", "colPrenom", "colNote"])) {
+          CN.ui.ajouterMessage("warn", "Recherche documentaire : paramétrage requis - veuillez sélectionner les colonnes, puis cliquer sur « Enregistrer ».");
+          await CN.app.modal.ouvrirModalMapping("rd");
+          return false;
+        }
+      }
+    }
+
+    return true;
+  };
+
   // Analyser => imports => calcul => affichage
   CN.app.pipeline.executerAnalyse = async function () {
     CN.ui.viderMessages();
@@ -655,6 +748,12 @@
       CN.etat.mappingPegase.delimiteur = ";";
     }
 
+    // Avant les imports des composantes, on vérifie les mappings
+    // Si un mapping manque, on ouvre une modal
+    if (!(await CN.app.pipeline.verifierMappingsAvantImport(cfg))) {
+      return;
+    }
+
     // PIX
     if (cfg.usePix && fPix) {
       CN.ui.ajouterMessage("info", "Lecture PIX…");
@@ -677,22 +776,6 @@
       CN.ui.ajouterMessage("info", "Lecture Recherche documentaire…");
       CN.etat.rdRaw = await CN.imports.chargerRD_brut(fRD);
       CN.etat.entetesRD = CN.etat.rdRaw.entetes;
-
-      // Mise à jour mapping RD selon les entêtes
-      const defRD = CN.imports.proposerMappingRD(CN.etat.rdRaw.entetes, CN.etat.rdRaw.lignes);
-      const mergedRD = CN.app.util.fusionMapping(defRD, CN.etat.mappingRD, CN.etat.rdRaw.entetes);
-      CN.etat.mappingRD.colId = mergedRD.colId;
-      CN.etat.mappingRD.colNom = mergedRD.colNom;
-      CN.etat.mappingRD.colPrenom = mergedRD.colPrenom;
-      CN.etat.mappingRD.colNote = mergedRD.colNote;
-
-      // Si mapping incomplet : on ouvre la modal et on stoppe l’analyse
-      if (!CN.app.util.mappingComplet(CN.etat.mappingRD, ["colId", "colNom", "colPrenom", "colNote"])) {
-        CN.ui.ajouterMessage("warn", "Recherche documentaire : paramétrage requis - veuillez sélectionner les colonnes, puis cliquer sur « Enregistrer ».");
-        await CN.app.modal.ouvrirModalMapping("rd");
-        return;
-      }
-
       CN.etat.rd = CN.imports.construireRD_depuisRaw(CN.etat.rdRaw, CN.etat.mappingRD, cfg.ptsRD, fRD.name);
     } else {
       CN.etat.rdRaw = null;
