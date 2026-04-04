@@ -73,16 +73,11 @@
             <input id="ptsRD" class="input-number" type="number" min="0" max="20" step="0.5" value="0" />
           </div>
 
-          <!-- Mode de remplissage PEGASE -->
+          <!-- Paramètres avancés -->
           <div class="config-extra">
-            <label class="config-label" for="modeRemplissage">Mode de remplissage PEGASE</label>
-            <select id="modeRemplissage" class="form-select">
-              <option value="ne_rien_ecraser" selected>Ne rien écraser</option>
-              <option value="ecraser_systematiquement">Écraser systématiquement</option>
-              <option value="si_nouvelle_superieure">Remplacer seulement si la nouvelle note est supérieure</option>
-              <option value="si_ancienne_lt10_et_nouvelle_gt10">Remplacer seulement si l'ancienne note est inférieure à
-                10 et la nouvelle supérieure à 10</option>
-            </select>
+            <button id="btnOpenParamCalcul" type="button" class="btn btn-outline w-100">
+              Paramètres avancés
+            </button>
           </div>
 
           <!-- Erreurs de de paramétrage (somme ≠ 20) -->
@@ -264,6 +259,64 @@
       <div class="ligne boutons" style="justify-content:flex-end">
         <button id="btnModalCancel" type="button" class="btn btn-outline">Annuler</button>
         <button id="btnModalSave" type="button" class="btn btn-primary">Enregistrer</button>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Modal Paramètres avancés -->
+  <div id="settingsOverlay" class="modal-overlay bloc-cache" role="dialog" aria-modal="true">
+    <div class="modal" role="document">
+
+      <div class="modal-entete">
+        <div class="modal-titre">Paramètres avancés</div>
+        <button id="btnSettingsClose" type="button" class="btn-icone" title="Fermer">✕</button>
+      </div>
+
+      <div class="grille-2">
+        <label class="champ">
+          <span class="champ-titre">Mode de remplissage PEGASE</span>
+          <select id="paramModeRemplissage">
+            <option value="ne_rien_ecraser" selected>Ne rien écraser</option>
+            <option value="ecraser_systematiquement">Écraser systématiquement</option>
+            <option value="si_nouvelle_superieure">Remplacer seulement si la nouvelle note est supérieure</option>
+            <option value="si_ancienne_lt10_et_nouvelle_gt10">Remplacer seulement si l'ancienne note est inférieure à 10
+              et la nouvelle supérieure à 10</option>
+          </select>
+        </label>
+
+        <label class="champ">
+          <span class="champ-titre">Appliquer l’arrondi</span>
+          <select id="paramArrondiActif">
+            <option value="oui" selected>Oui</option>
+            <option value="non">Non (note brute)</option>
+          </select>
+        </label>
+
+        <label class="champ">
+          <span class="champ-titre">Méthode d’arrondi</span>
+          <select id="paramArrondiMethode">
+            <option value="classique" selected>Arrondi classique</option>
+            <option value="superieur">Arrondi au supérieur</option>
+            <option value="inferieur">Arrondi à l’inférieur</option>
+          </select>
+        </label>
+
+        <label class="champ">
+          <span class="champ-titre">Précision</span>
+          <select id="paramArrondiPrecision">
+            <option value="centieme" selected>Au centième</option>
+            <option value="dixieme">Au dixième</option>
+            <option value="entier">À l’entier</option>
+          </select>
+        </label>
+      </div>
+
+      <div id="arrondiPreview" class="arrondi-preview"></div>
+
+      <div class="ligne boutons" style="justify-content:flex-end">
+        <button id="btnSettingsCancel" type="button" class="btn btn-outline">Annuler</button>
+        <button id="btnSettingsSave" type="button" class="btn btn-primary">Enregistrer</button>
       </div>
 
     </div>

@@ -146,20 +146,41 @@
         let ptsPres = config.ptsPres;
         if (!Number.isFinite(ptsPres)) ptsPres = 0;
 
-        v.notePres = CN.data.arrondi2((score5 / 5) * ptsPres);
-      } else v.notePres = 0;
+        v.notePres = Math.min(ptsPres, Math.max(0, (score5 / 5) * ptsPres));
+      } else {
+        v.notePres = 0;
+      }
 
-      // RD : déjà converti dans imports (noteRD)
+      // RD : valeur brute déjà calculée dans imports
       if (config.useRD && rd) {
         const rr = rd.map.get(v.id);
         v.noteRD = rr ? (rr.noteRD ?? 0) : 0;
-      } else v.noteRD = 0;
+      } else {
+        v.noteRD = 0;
+      }
 
-      // PIX : déjà calculé dans imports (notePix)
+      // PIX : valeur brute déjà calculée dans imports
       v.notePix = config.usePix && pix ? (pix.parEtudiant.get(v.id)?.notePix ?? 0) : 0;
 
-      // total /20
-      v.noteFinale = CN.data.arrondi2((v.notePix || 0) + (v.notePres || 0) + (v.noteRD || 0));
+      // Total brut
+      const noteFinaleBrute =
+        (v.notePix || 0) +
+        (v.notePres || 0) +
+        (v.noteRD || 0);
+
+      // Sécurité : borne entre 0 et 20
+      const noteFinaleBornee = Math.min(20, Math.max(0, noteFinaleBrute));
+
+      // Si l’arrondi est désactivé, on garde la note brute
+      if (config.arrondiActif === false) {
+        v.noteFinale = noteFinaleBornee;
+      } else {
+        v.noteFinale = CN.data.arrondirSelonConfig(
+          noteFinaleBornee,
+          config.arrondiPrecision,
+          config.arrondiMethode
+        );
+      }
     }
 
     return { notes, idsPix, idsPres, idsRD };
@@ -397,12 +418,15 @@
   }
 
   // Formate en 2 décimales
-  function formaterNoteCSV(note, modeleNote, delim) {
-    let s = Number(note).toFixed(2);
+  function formaterNoteCSV(note, modeleNote, delim, config) {
     const modele = (modeleNote ?? "").toString();
     const utiliserVirgule = modele.includes(",") || (!modele.includes(".") && delim === ";");
-    if (utiliserVirgule) s = s.replace(".", ",");
-    return s;
+
+    return CN.data.formaterNoteSelonConfig(
+      note,
+      config,
+      utiliserVirgule ? "," : "."
+    );
   }
 
   function normaliserModeRemplissage(mode) {
@@ -450,7 +474,7 @@
     return false;
   }
 
-  CN.traitement.remplirPegase = function (pegase, mappingPegase, notes, modeRemplissage) {
+  CN.traitement.remplirPegase = function (pegase, mappingPegase, notes, config) {
     const lignesOut = pegase.lignes.map(r => ({ ...r }));
     let nbEcrits = 0;
     let nbIgnores = 0;
@@ -462,7 +486,7 @@
     const delim = mappingPegase.delimiteur || ";";
     const sessionCible = detecterNumeroSession(mappingPegase.colNote);
     const colSession1 = (sessionCible === 2) ? trouverColonneNoteSession(pegase.entetes, 1) : null;
-    const mode = normaliserModeRemplissage(modeRemplissage);
+    const mode = normaliserModeRemplissage(config?.modeRemplissage);
 
     // N°étudiants PEGASE pour repérer ceux qui ont une note mais sont hors PEGASE
     const idsPegase = new Set();
@@ -492,7 +516,7 @@
       // Si l'étudiant a une note calculée
       if (n) {
         if (peutRemplacerNote(valeurExistante, n.noteFinale, mode)) {
-          r[mappingPegase.colNote] = formaterNoteCSV(n.noteFinale, modeleNote, delim);
+          r[mappingPegase.colNote] = formaterNoteCSV(n.noteFinale, modeleNote, delim, config);
           nbEcrits++;
         } else {
           nbIgnores++;

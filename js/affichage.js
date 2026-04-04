@@ -40,6 +40,32 @@
     return "Ne rien écraser";
   }
 
+  function libelleMethodeArrondi(methode) {
+    const m = (methode ?? "").toString();
+    if (m === "superieur") return "Arrondi au supérieur";
+    if (m === "inferieur") return "Arrondi à l’inférieur";
+    return "Arrondi classique";
+  }
+
+  function libellePrecisionArrondi(precision) {
+    const p = (precision ?? "").toString();
+    if (p === "entier") return "à l’entier";
+    if (p === "dixieme") return "au dixième";
+    return "au centième";
+  }
+
+  function formaterNoteBruteAffichage(valeur) {
+    const n = CN.data.toNombreFR(valeur);
+    if (!Number.isFinite(n)) return "";
+
+    // enlève les zéros inutiles à la fin
+    return n.toFixed(3).replace(/\.?0+$/, "").replace(".", ",");
+  }
+
+  function formaterNoteFinaleAffichage(valeur, config) {
+    return CN.data.formaterNoteSelonConfig(valeur, config, ",");
+  }
+
   /*
      Construire les données du tableau "aperçu"
      - entetes : ordre des colonnes à afficher
@@ -100,11 +126,11 @@
           "ANOMALIES": nbAno ? String(nbAno) : ""
         };
 
-        if (config.usePix) base["NOTE_PIX"] = Number.isFinite(n?.notePix) ? n.notePix.toFixed(2) : "";
-        if (config.usePres) base["NOTE_PRESENCES"] = Number.isFinite(n?.notePres) ? n.notePres.toFixed(2) : "";
-        if (config.useRD) base["NOTE_RD"] = Number.isFinite(n?.noteRD) ? n.noteRD.toFixed(2) : "";
+        if (config.usePix) base["NOTE_PIX"] = formaterNoteBruteAffichage(n?.notePix);
+        if (config.usePres) base["NOTE_PRESENCES"] = formaterNoteBruteAffichage(n?.notePres);
+        if (config.useRD) base["NOTE_RD"] = formaterNoteBruteAffichage(n?.noteRD);
 
-        base["NOTE_FINALE_20"] = Number.isFinite(n?.noteFinale) ? n.noteFinale.toFixed(2) : "";
+        base["NOTE_FINALE_20"] = formaterNoteFinaleAffichage(n?.noteFinale, config);
 
         return base;
       });
@@ -189,11 +215,11 @@
         ANOMALIES: nbAno ? String(nbAno) : ""
       };
 
-      if (config.usePix) base["NOTE_PIX"] = Number.isFinite(n?.notePix) ? n.notePix.toFixed(2) : "";
-      if (config.usePres) base["NOTE_PRESENCES"] = Number.isFinite(n?.notePres) ? n.notePres.toFixed(2) : "";
-      if (config.useRD) base["NOTE_RD"] = Number.isFinite(n?.noteRD) ? n.noteRD.toFixed(2) : "";
+      if (config.usePix) base["NOTE_PIX"] = formaterNoteBruteAffichage(n?.notePix);
+      if (config.usePres) base["NOTE_PRESENCES"] = formaterNoteBruteAffichage(n?.notePres);
+      if (config.useRD) base["NOTE_RD"] = formaterNoteBruteAffichage(n?.noteRD);
 
-      base["NOTE_FINALE_20"] = Number.isFinite(n?.noteFinale) ? n.noteFinale.toFixed(2) : "";
+      base["NOTE_FINALE_20"] = formaterNoteFinaleAffichage(n?.noteFinale, config);
 
       return base;
     });
@@ -285,6 +311,7 @@
     <div class="alerte info" style="flex:1">
       <b>Résumé</b><br/>
       Composantes : <b>${comp.join(" ; ")}</b> (sur /20)<br/>
+      Arrondi : <b>${config.arrondiActif === false ? "Désactivé (note brute)" : `${libelleMethodeArrondi(config.arrondiMethode)} ${libellePrecisionArrondi(config.arrondiPrecision)}`}</b><br/>
       ${stats.avecPegase ? `Mode PEGASE : <b>${libelleModeRemplissage(config.modeRemplissage)}</b><br/>` : ``}
       <br/>
 

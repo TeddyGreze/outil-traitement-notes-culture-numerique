@@ -710,6 +710,17 @@ body{
   border-top: 1px solid var(--border);
 }
 
+.arrondi-preview{
+  margin-top: 14px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: #f8fafc;
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
 /*
    Responsive 
 */

@@ -9,6 +9,14 @@
 
   const CN = (window.CN = window.CN || {});
 
+  CN.utils = CN.utils || {};
+
+  // clé unique pour reconnaître un fichier
+  CN.utils.cleFichier = function (file) {
+    if (!file) return "";
+    return `${file.name}__${file.size}__${file.lastModified}`;
+  };
+
   // Références
   CN.el = {
     // Paramétrage (cases + pondérations)
@@ -59,6 +67,8 @@
     btnCfgPres: document.getElementById("btnCfgPres"),
     btnCfgRD: document.getElementById("btnCfgRD"),
 
+    btnOpenParamCalcul: document.getElementById("btnOpenParamCalcul"),
+
     // Résultats + filtres
     zoneResultats: document.getElementById("zoneResultats"),
     resume: document.getElementById("resume"),
@@ -86,6 +96,17 @@
     btnModalCancel: document.getElementById("btnModalCancel"),
     btnModalSave: document.getElementById("btnModalSave"),
 
+    // Modal paramètres avancés
+    settingsOverlay: document.getElementById("settingsOverlay"),
+    btnSettingsClose: document.getElementById("btnSettingsClose"),
+    btnSettingsCancel: document.getElementById("btnSettingsCancel"),
+    btnSettingsSave: document.getElementById("btnSettingsSave"),
+    paramModeRemplissage: document.getElementById("paramModeRemplissage"),
+    paramArrondiActif: document.getElementById("paramArrondiActif"),
+    paramArrondiMethode: document.getElementById("paramArrondiMethode"),
+    paramArrondiPrecision: document.getElementById("paramArrondiPrecision"),
+    arrondiPreview: document.getElementById("arrondiPreview"),
+
     mapRow1: document.getElementById("mapRow1"),
     mapRow2: document.getElementById("mapRow2"),
     mapRow3: document.getElementById("mapRow3"),
@@ -111,6 +132,9 @@
       ptsPres: 5,
       ptsRD: 0,
       modeRemplissage: "ne_rien_ecraser",
+      arrondiActif: true,
+      arrondiMethode: "classique",
+      arrondiPrecision: "centieme",
     },
 
     // Données importées
@@ -128,6 +152,7 @@
     mappingPix: { colId: null, colNom: null, colPrenom: null, colScore: null, colProg: null, colShare: null },
 
     mappingPres: { colId: null, colNom: null, colPrenom: null, colScore5: null },
+    mappingPresParFichier: {},
 
     // En-têtes mémorisés
     entetesPegase: null,
@@ -142,12 +167,13 @@
     anomaliesParId: null,
     apercu: null,
     modeSansPegase: false,
+    analyseDejaLancee: false,
   };
 
   CN.meta = {
     prenom: "Teddy",
     nom: "GREZE",
-    version: "1.0.0"
+    version: "1.1.0"
   };
 
   CN.ui = CN.ui || {};

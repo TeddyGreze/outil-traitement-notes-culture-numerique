@@ -63,8 +63,89 @@
     return out;
   };
 
+  CN.app.util.aDesFichiersSelectionnes = function () {
+    return !!(CN.el.fichierPegase.files && CN.el.fichierPegase.files.length) ||
+      !!(CN.el.fichierPix.files && CN.el.fichierPix.files.length) ||
+      !!(CN.el.fichiersPresences.files && CN.el.fichiersPresences.files.length) ||
+      !!(CN.el.fichierRD.files && CN.el.fichierRD.files.length);
+  };
+
   // Contexte “actuel” de la modal (type, en-têtes, mapping en cours…)
   let modalCtx = null;
+
+  // Modal paramètres avancés (arrondi + mode PEGASE)
+
+  CN.app.modal.majPreviewParamCalcul = function () {
+    if (!CN.el.arrondiPreview) return;
+
+    const arrondiActif = (CN.el.paramArrondiActif?.value || "oui") === "oui";
+
+    if (CN.el.paramArrondiMethode) {
+      CN.el.paramArrondiMethode.disabled = !arrondiActif;
+    }
+
+    if (CN.el.paramArrondiPrecision) {
+      CN.el.paramArrondiPrecision.disabled = !arrondiActif;
+    }
+
+    const cfgPreview = {
+      arrondiActif,
+      arrondiMethode: CN.el.paramArrondiMethode?.value || "classique",
+      arrondiPrecision: CN.el.paramArrondiPrecision?.value || "centieme"
+    };
+
+    const ex = CN.data.formaterNoteSelonConfig(12.341, cfgPreview, ",");
+
+    CN.el.arrondiPreview.innerHTML = arrondiActif
+      ? `<b>Exemple :</b> 12,341 devient <b>${ex}</b>`
+      : `<b>Exemple :</b> 12,341 reste <b>${ex}</b> (note brute)`;
+  };
+
+  CN.app.modal.ouvrirParamCalcul = function () {
+    if (CN.el.paramModeRemplissage) {
+      CN.el.paramModeRemplissage.value = CN.etat.config.modeRemplissage || "ne_rien_ecraser";
+    }
+    if (CN.el.paramArrondiActif) {
+      CN.el.paramArrondiActif.value = CN.etat.config.arrondiActif === false ? "non" : "oui";
+    }
+    if (CN.el.paramArrondiMethode) {
+      CN.el.paramArrondiMethode.value = CN.etat.config.arrondiMethode || "classique";
+    }
+    if (CN.el.paramArrondiPrecision) {
+      CN.el.paramArrondiPrecision.value = CN.etat.config.arrondiPrecision || "centieme";
+    }
+
+    CN.app.modal.majPreviewParamCalcul();
+    CN.ui.afficherBloc(CN.el.settingsOverlay, true);
+  };
+
+  CN.app.modal.fermerParamCalcul = function () {
+    CN.ui.afficherBloc(CN.el.settingsOverlay, false);
+  };
+
+  CN.app.modal.enregistrerParamCalcul = async function () {
+    CN.etat.config.modeRemplissage = (CN.el.paramModeRemplissage?.value || "ne_rien_ecraser").toString();
+    CN.etat.config.arrondiActif = (CN.el.paramArrondiActif?.value || "oui") === "oui";
+    CN.etat.config.arrondiMethode = (CN.el.paramArrondiMethode?.value || "classique").toString();
+    CN.etat.config.arrondiPrecision = (CN.el.paramArrondiPrecision?.value || "centieme").toString();
+
+    CN.app.modal.fermerParamCalcul();
+    CN.app.config.appliquerReglesConfig();
+
+    const doitRelancerAnalyse = CN.etat.analyseDejaLancee === true;
+
+    if (doitRelancerAnalyse) {
+      try {
+        await CN.app.pipeline.executerAnalyse();
+        CN.ui.ajouterMessage("ok", "Paramètres avancés enregistrés et analyse relancée.");
+      } catch (e) {
+        CN.ui.ajouterMessage("danger", "Erreur après enregistrement des paramètres avancés : " + e.message);
+        console.error(e);
+      }
+    } else {
+      CN.ui.ajouterMessage("info", "Paramètres avancés enregistrés.");
+    }
+  };
 
   // Modal PIX - options avancées
 
@@ -76,6 +157,104 @@
     if (advRow) advRow.remove();
 
     if (modalCtx) modalCtx.pixUI = null;
+  };
+
+  CN.app.modal.detruirePresMultiUI = function () {
+    const row = document.getElementById("presFileRow");
+    if (row) row.remove();
+  };
+
+  CN.app.modal.sauverMappingPresCourant = function () {
+    if (!modalCtx || modalCtx.type !== "pres") return;
+    if (!modalCtx.presCurrentKey) return;
+
+    modalCtx.mappingParFichier = modalCtx.mappingParFichier || {};
+
+    modalCtx.mappingParFichier[modalCtx.presCurrentKey] = {
+      colId: CN.el.mapSel1.value || null,
+      colNom: CN.el.mapSel2.value || null,
+      colPrenom: CN.el.mapSel3.value || null,
+      colScore5: CN.el.mapSel4.value || null,
+    };
+  };
+
+  CN.app.modal.installerPresMultiUI = function () {
+    if (!modalCtx || modalCtx.type !== "pres") return;
+    if (!Array.isArray(modalCtx.presFiles) || modalCtx.presFiles.length <= 1) return;
+
+    let row = document.getElementById("presFileRow");
+    if (row) return;
+
+    const grid = CN.el.mapRow1?.parentElement;
+    if (!grid || !grid.parentElement) return;
+
+    row = document.createElement("label");
+    row.id = "presFileRow";
+    row.className = "champ";
+    row.style.marginBottom = "12px";
+
+    row.innerHTML = `
+      <span class="champ-titre">Fichier de présences</span>
+      <select id="presFileSelect"></select>
+    `;
+
+    grid.parentElement.insertBefore(row, grid);
+
+    const select = row.querySelector("#presFileSelect");
+
+    for (const f of modalCtx.presFiles) {
+      const opt = document.createElement("option");
+      opt.value = f.key;
+      opt.textContent = f.name;
+      select.appendChild(opt);
+    }
+
+    select.value = modalCtx.presCurrentKey || modalCtx.presFiles[0].key;
+
+    select.addEventListener("change", () => {
+      CN.app.modal.sauverMappingPresCourant();
+      modalCtx.presCurrentKey = select.value;
+      CN.app.modal.rendreVueModalPres();
+    });
+  };
+
+  CN.app.modal.rendreVueModalPres = function () {
+    if (!modalCtx || modalCtx.type !== "pres") return;
+
+    CN.app.modal.installerPresMultiUI();
+
+    const presFiles = modalCtx.presFiles || [];
+    if (!presFiles.length) return;
+
+    let fichierCourant = presFiles.find(f => f.key === modalCtx.presCurrentKey);
+    if (!fichierCourant) {
+      fichierCourant = presFiles[0];
+      modalCtx.presCurrentKey = fichierCourant.key;
+    }
+
+    const mappingCourant = modalCtx.mappingParFichier?.[fichierCourant.key] || {};
+
+    const fileSelect = document.getElementById("presFileSelect");
+    if (fileSelect) fileSelect.value = fichierCourant.key;
+
+    CN.el.modalHint.textContent = presFiles.length > 1
+      ? `Veuillez sélectionner les colonnes correspondant aux champs Présences pour le fichier « ${fichierCourant.name} ».`
+      : "Veuillez sélectionner les colonnes correspondant aux champs Présences.";
+
+    CN.ui.afficherBloc(CN.el.mapRow1, true);
+    CN.ui.afficherBloc(CN.el.mapRow2, true);
+    CN.ui.afficherBloc(CN.el.mapRow3, true);
+    CN.ui.afficherBloc(CN.el.mapRow4, true);
+
+    CN.el.mapLbl1.textContent = "Colonne N° étudiant";
+    CN.el.mapLbl2.textContent = "Colonne NOM";
+    CN.el.mapLbl3.textContent = "Colonne PRÉNOM";
+    CN.el.mapLbl4.textContent = "Colonne Score /5";
+
+    CN.app.util.remplirSelect(CN.el.mapSel1, fichierCourant.entetes, mappingCourant.colId || "");
+    CN.app.util.remplirSelect(CN.el.mapSel2, fichierCourant.entetes, mappingCourant.colNom || "");
+    CN.app.util.remplirSelect(CN.el.mapSel3, fichierCourant.entetes, mappingCourant.colPrenom || "");
+    CN.app.util.remplirSelect(CN.el.mapSel4, fichierCourant.entetes, mappingCourant.colScore5 || "");
   };
 
   // Met “Options avancées” dans la modal PIX
@@ -196,7 +375,13 @@
   CN.app.modal.syncModalToMappingAvantSave = function () {
     if (!modalCtx) return;
 
-    // Cas général (PEGASE / PRES / RD)
+    // Cas Présences : on sauvegarde le mapping du fichier courant
+    if (modalCtx.type === "pres") {
+      CN.app.modal.sauverMappingPresCourant();
+      return;
+    }
+
+    // Cas général (PEGASE / RD)
     if (modalCtx.type !== "pix") {
       modalCtx.mapping[modalCtx.keys[0]] = CN.el.mapSel1.value;
       modalCtx.mapping[modalCtx.keys[1]] = CN.el.mapSel2.value;
@@ -229,8 +414,9 @@
     let delim = ";";
     let lignesPreview = [];
 
-    // Si on change de modal, on enlève l’UI avancée PIX
+    // Si on change de modal, on enlève les UI spécifiques
     CN.app.modal.detruirePixAdvancedUI();
+    CN.app.modal.detruirePresMultiUI();
 
     // PEGASE
     if (type === "pegase") {
@@ -293,21 +479,42 @@
 
     // Présences
     if (type === "pres") {
-      if (!fPres.length) return CN.ui.ajouterMessage("warn", "Veuillez d'abord sélectionner au moins un fichier de présences.");
-      const r = await CN.imports.lireApercuCSV(fPres[0]);
-      entetes = r.entetes; delim = r.delim; lignesPreview = r.lignes;
-      CN.etat.entetesPres = entetes;
+      if (!fPres.length) {
+        return CN.ui.ajouterMessage("warn", "Veuillez d'abord sélectionner au moins un fichier de présences.");
+      }
 
-      const def = CN.imports.proposerMappingPres(entetes, lignesPreview);
-      const current = CN.app.util.fusionMapping(def, CN.etat.mappingPres, entetes);
+      const presFiles = [];
+      const mappingParFichier = {};
+
+      for (const fichier of fPres) {
+        const r = await CN.imports.lireApercuCSV(fichier);
+        const cle = CN.utils.cleFichier(fichier);
+
+        const def = CN.imports.proposerMappingPres(r.entetes, r.lignes);
+        const existant = {
+          ...(CN.etat.mappingPres || {}),
+          ...(CN.etat.mappingPresParFichier?.[cle] || {})
+        };
+        const current = CN.app.util.fusionMapping(def, existant, r.entetes);
+
+        presFiles.push({
+          key: cle,
+          name: fichier.name,
+          entetes: r.entetes,
+          lignes: r.lignes,
+          delim: r.delim
+        });
+
+        mappingParFichier[cle] = CN.app.util.copier(current);
+      }
+
+      CN.etat.entetesPres = presFiles[0]?.entetes || null;
 
       modalCtx = {
         type,
-        entetes,
-        labels: ["Colonne N° étudiant", "Colonne NOM", "Colonne PRÉNOM", "Colonne Score /5"],
-        keys: ["colId", "colNom", "colPrenom", "colScore5"],
-        mapping: CN.app.util.copier(current),
-        hint: "Veuillez sélectionner les colonnes correspondant aux champs Présences."
+        presFiles,
+        presCurrentKey: presFiles[0]?.key || "",
+        mappingParFichier
       };
     }
 
@@ -327,8 +534,9 @@
     // PIX : écran spécifique (avec options avancées)
     if (type === "pix") {
       CN.app.modal.rendreVueModalPix();
+    } else if (type === "pres") {
+      CN.app.modal.rendreVueModalPres();
     } else {
-      // PEGASE / PRES / RD : on remplit selon labels/keys
       CN.el.modalHint.textContent = modalCtx.hint;
 
       CN.el.mapLbl1.textContent = modalCtx.labels[0];
@@ -349,6 +557,7 @@
   // Ferme la modal
   CN.app.modal.fermerModalMapping = function () {
     CN.app.modal.detruirePixAdvancedUI();
+    CN.app.modal.detruirePresMultiUI();
     modalCtx = null;
     CN.ui.afficherBloc(CN.el.modalOverlay, false);
   };
@@ -385,33 +594,31 @@
     }
 
     if (modalCtx.type === "pres") {
-      CN.etat.mappingPres.colId = modalCtx.mapping.colId;
-      CN.etat.mappingPres.colNom = modalCtx.mapping.colNom;
-      CN.etat.mappingPres.colPrenom = modalCtx.mapping.colPrenom;
-      CN.etat.mappingPres.colScore5 = modalCtx.mapping.colScore5;
+      CN.etat.mappingPresParFichier = CN.app.util.copier(modalCtx.mappingParFichier || {});
+
+      const premiereCle = modalCtx.presFiles?.[0]?.key || "";
+      const premierMapping = CN.etat.mappingPresParFichier[premiereCle] || {};
+
+      CN.etat.mappingPres.colId = premierMapping.colId || null;
+      CN.etat.mappingPres.colNom = premierMapping.colNom || null;
+      CN.etat.mappingPres.colPrenom = premierMapping.colPrenom || null;
+      CN.etat.mappingPres.colScore5 = premierMapping.colScore5 || null;
     }
 
     CN.app.modal.fermerModalMapping();
 
-    const aDesFichiersSelectionnes =
-      !!(CN.el.fichierPegase.files && CN.el.fichierPegase.files.length) ||
-      !!(CN.el.fichierPix.files && CN.el.fichierPix.files.length) ||
-      !!(CN.el.fichiersPresences.files && CN.el.fichiersPresences.files.length) ||
-      !!(CN.el.fichierRD.files && CN.el.fichierRD.files.length);
+    const doitRelancerAnalyse = CN.etat.analyseDejaLancee === true;
 
-    if (aDesFichiersSelectionnes) {
+    if (doitRelancerAnalyse) {
       try {
         await CN.app.pipeline.executerAnalyse();
-
-        if (!modalCtx) {
-          CN.ui.ajouterMessage("ok", "Paramétrage enregistré et analyse relancée.");
-        }
+        CN.ui.ajouterMessage("ok", "Paramétrage enregistré et analyse relancée.");
       } catch (e) {
         CN.ui.ajouterMessage("danger", "Erreur après enregistrement du paramétrage : " + e.message);
         console.error(e);
       }
     } else {
-      CN.ui.ajouterMessage("info", "Paramétrage enregistré. Veuillez cliquer sur « Analyser ».");
+      CN.ui.ajouterMessage("info", "Paramétrage enregistré.");
     }
   };
 
@@ -430,9 +637,23 @@
     if (!Number.isFinite(ptsPres)) ptsPres = 0;
     if (!Number.isFinite(ptsRD)) ptsRD = 0;
 
-    const modeRemplissage = (CN.el.modeRemplissage?.value || "ne_rien_ecraser").toString();
+    const modeRemplissage = (CN.etat.config?.modeRemplissage || "ne_rien_ecraser").toString();
+    const arrondiActif = CN.etat.config?.arrondiActif !== false;
+    const arrondiMethode = (CN.etat.config?.arrondiMethode || "classique").toString();
+    const arrondiPrecision = (CN.etat.config?.arrondiPrecision || "centieme").toString();
 
-    return { usePix, usePres, useRD, ptsPix, ptsPres, ptsRD, modeRemplissage };
+    return {
+      usePix,
+      usePres,
+      useRD,
+      ptsPix,
+      ptsPres,
+      ptsRD,
+      modeRemplissage,
+      arrondiActif,
+      arrondiMethode,
+      arrondiPrecision
+    };
   };
 
   CN.app.config.nbComposantesSelectionnees = function (cfg) {
@@ -606,19 +827,25 @@
 
     if (type === "pix" && cfg.usePix) {
       const fPix = CN.el.fichierPix.files[0] || null;
-      if (fPix) CN.etat.pix = await CN.imports.chargerPIX(fPix, cfg.ptsPix, CN.etat.mappingPix);
+      if (fPix) CN.etat.pix = await CN.imports.chargerPIX(fPix, cfg.ptsPix, CN.etat.mappingPix, cfg);
     }
 
     if (type === "pres" && cfg.usePres) {
       const files = Array.from(CN.el.fichiersPresences.files || []);
-      if (files.length) CN.etat.pres = await CN.imports.chargerPresences(files, CN.etat.mappingPres);
+      if (files.length) {
+        CN.etat.pres = await CN.imports.chargerPresences(
+          files,
+          CN.etat.mappingPres,
+          CN.etat.mappingPresParFichier
+        );
+      }
     }
 
     if (type === "rd" && cfg.useRD) {
       const fRD = CN.el.fichierRD.files[0] || null;
       if (fRD) {
         CN.etat.rdRaw = await CN.imports.chargerRD_brut(fRD);
-        CN.etat.rd = CN.imports.construireRD_depuisRaw(CN.etat.rdRaw, CN.etat.mappingRD, cfg.ptsRD, fRD.name);
+        CN.etat.rd = CN.imports.construireRD_depuisRaw(CN.etat.rdRaw, CN.etat.mappingRD, cfg.ptsRD, fRD.name, cfg);
       }
     }
   };
@@ -654,19 +881,39 @@
     if (cfg.usePres) {
       const fPres = Array.from(CN.el.fichiersPresences.files || []);
       if (fPres.length) {
-        const rPres = await CN.imports.lireApercuCSV(fPres[0]);
-        CN.etat.entetesPres = rPres.entetes;
+        const mappingParFichier = {};
+        let mappingIncomplet = false;
 
-        const defPres = CN.imports.proposerMappingPres(rPres.entetes, rPres.lignes);
-        const mergedPres = CN.app.util.fusionMapping(defPres, CN.etat.mappingPres, rPres.entetes);
+        for (const fichier of fPres) {
+          const rPres = await CN.imports.lireApercuCSV(fichier);
+          const cle = CN.utils.cleFichier(fichier);
 
-        CN.etat.mappingPres.colId = mergedPres.colId;
-        CN.etat.mappingPres.colNom = mergedPres.colNom;
-        CN.etat.mappingPres.colPrenom = mergedPres.colPrenom;
-        CN.etat.mappingPres.colScore5 = mergedPres.colScore5;
+          const defPres = CN.imports.proposerMappingPres(rPres.entetes, rPres.lignes);
+          const existant = {
+            ...(CN.etat.mappingPres || {}),
+            ...(CN.etat.mappingPresParFichier?.[cle] || {})
+          };
+          const mergedPres = CN.app.util.fusionMapping(defPres, existant, rPres.entetes);
 
-        if (!CN.app.util.mappingComplet(CN.etat.mappingPres, ["colId", "colNom", "colPrenom", "colScore5"])) {
-          CN.ui.ajouterMessage("warn", "Présences : paramétrage requis - veuillez sélectionner les colonnes, puis cliquer sur « Enregistrer ».");
+          mappingParFichier[cle] = mergedPres;
+
+          if (!CN.app.util.mappingComplet(mergedPres, ["colId", "colNom", "colPrenom", "colScore5"])) {
+            mappingIncomplet = true;
+          }
+        }
+
+        CN.etat.mappingPresParFichier = mappingParFichier;
+
+        const premiereCle = CN.utils.cleFichier(fPres[0]);
+        const premierMapping = mappingParFichier[premiereCle] || {};
+
+        CN.etat.mappingPres.colId = premierMapping.colId || null;
+        CN.etat.mappingPres.colNom = premierMapping.colNom || null;
+        CN.etat.mappingPres.colPrenom = premierMapping.colPrenom || null;
+        CN.etat.mappingPres.colScore5 = premierMapping.colScore5 || null;
+
+        if (mappingIncomplet) {
+          CN.ui.ajouterMessage("warn", "Présences : paramétrage requis - veuillez sélectionner les colonnes pour chaque fichier, puis cliquer sur « Enregistrer ».");
           await CN.app.modal.ouvrirModalMapping("pres");
           return false;
         }
@@ -701,6 +948,8 @@
 
   // Analyser => imports => calcul => affichage
   CN.app.pipeline.executerAnalyse = async function () {
+    CN.etat.analyseDejaLancee = true;
+
     CN.ui.viderMessages();
     CN.ui.afficherBloc(CN.el.zoneResultats, false);
 
@@ -757,7 +1006,7 @@
     // PIX
     if (cfg.usePix && fPix) {
       CN.ui.ajouterMessage("info", "Lecture PIX…");
-      CN.etat.pix = await CN.imports.chargerPIX(fPix, cfg.ptsPix, CN.etat.mappingPix);
+      CN.etat.pix = await CN.imports.chargerPIX(fPix, cfg.ptsPix, CN.etat.mappingPix, cfg);
       CN.etat.entetesPix = CN.etat.pix.entetes;
     } else {
       CN.etat.pix = { parEtudiant: new Map(), invalides: [], totalLignes: 0, nbValides: 0 };
@@ -766,7 +1015,11 @@
     // Présences
     if (cfg.usePres && fPres.length) {
       CN.ui.ajouterMessage("info", "Lecture Présences…");
-      CN.etat.pres = await CN.imports.chargerPresences(fPres, CN.etat.mappingPres);
+      CN.etat.pres = await CN.imports.chargerPresences(
+        fPres,
+        CN.etat.mappingPres,
+        CN.etat.mappingPresParFichier
+      );
     } else {
       CN.etat.pres = { map: new Map(), invalides: [], fichiersCount: 0 };
     }
@@ -776,7 +1029,7 @@
       CN.ui.ajouterMessage("info", "Lecture Recherche documentaire…");
       CN.etat.rdRaw = await CN.imports.chargerRD_brut(fRD);
       CN.etat.entetesRD = CN.etat.rdRaw.entetes;
-      CN.etat.rd = CN.imports.construireRD_depuisRaw(CN.etat.rdRaw, CN.etat.mappingRD, cfg.ptsRD, fRD.name);
+      CN.etat.rd = CN.imports.construireRD_depuisRaw(CN.etat.rdRaw, CN.etat.mappingRD, cfg.ptsRD, fRD.name, cfg);
     } else {
       CN.etat.rdRaw = null;
       CN.etat.rd = { ok: true, map: new Map(), invalides: [], totalLignes: 0, nbValides: 0 };
@@ -807,7 +1060,7 @@
         CN.etat.pegase,
         CN.etat.mappingPegase,
         build.notes,
-        cfg.modeRemplissage
+        cfg
       )
       : { lignesOut: [], nbEcrits: 0, nbIgnores: 0, nbABI: 0, inconnus: [] };
 
@@ -1014,10 +1267,21 @@
     if (config.useRD) entetes.push(`Note RD (/${ptsRD})`);
     entetes.push("Note finale (/20)");
 
-    function fmt(v) {
-      const s = (v ?? "").toString().trim();
-      if (!s) return "";
-      return (delim === ";") ? s.replace(".", ",") : s;
+    function fmtBrut(v) {
+      const n = CN.data.toNombreFR(v);
+      if (!Number.isFinite(n)) return "";
+
+      let s = n.toFixed(3).replace(/\.?0+$/, "");
+      if (delim === ";") s = s.replace(".", ",");
+      return s;
+    }
+
+    function fmtFinal(v) {
+      return CN.data.formaterNoteSelonConfig(
+        v,
+        config,
+        delim === ";" ? "," : "."
+      );
     }
 
     const lignes = (apercu?.lignes || []).map(r => {
@@ -1027,10 +1291,10 @@
         "Prénom": (r[colPrenom] ?? "").toString(),
       };
 
-      if (config.usePix) out[`Note PIX (/${ptsPix})`] = fmt(r["NOTE_PIX"]);
-      if (config.usePres) out[`Note présences (/${ptsPres})`] = fmt(r["NOTE_PRESENCES"]);
-      if (config.useRD) out[`Note RD (/${ptsRD})`] = fmt(r["NOTE_RD"]);
-      out["Note finale (/20)"] = fmt(r["NOTE_FINALE_20"]);
+      if (config.usePix) out[`Note PIX (/${ptsPix})`] = fmtBrut(r["NOTE_PIX"]);
+      if (config.usePres) out[`Note présences (/${ptsPres})`] = fmtBrut(r["NOTE_PRESENCES"]);
+      if (config.useRD) out[`Note RD (/${ptsRD})`] = fmtBrut(r["NOTE_RD"]);
+      out["Note finale (/20)"] = fmtFinal(r["NOTE_FINALE_20"]);
 
       return out;
     });
@@ -1241,6 +1505,7 @@
     CN.etat.mappingPix = { colId: null, colNom: null, colPrenom: null, colScore: null, colProg: null, colShare: null };
 
     CN.etat.mappingPres = { colId: null, colNom: null, colPrenom: null, colScore5: null };
+    CN.etat.mappingPresParFichier = {};
 
     CN.etat.entetesPegase = null;
     CN.etat.entetesPix = null;
@@ -1253,6 +1518,7 @@
     CN.etat.anomaliesParId = null;
     CN.etat.apercu = null;
     CN.etat.modeSansPegase = false;
+    CN.etat.analyseDejaLancee = false;
 
     // Reset inputs fichiers
     CN.el.fichierPegase.value = "";
@@ -1271,6 +1537,7 @@
     CN.ui.viderMessages();
     CN.ui.afficherBloc(CN.el.zoneResultats, false);
     CN.app.modal.fermerModalMapping();
+    CN.app.modal.fermerParamCalcul();
 
     CN.el.recherche.value = "";
     CN.el.filtreAnomalies.value = "tous";
@@ -1294,7 +1561,7 @@
   // Gestion des événements (clics / input / clavier)
   CN.app.main.bind = function () {
     // Changement config
-    [CN.el.usePix, CN.el.usePres, CN.el.useRD, CN.el.ptsPix, CN.el.ptsPres, CN.el.ptsRD, CN.el.modeRemplissage].forEach(x => {
+    [CN.el.usePix, CN.el.usePres, CN.el.useRD, CN.el.ptsPix, CN.el.ptsPres, CN.el.ptsRD].forEach(x => {
       if (!x) return;
       x.addEventListener("change", CN.app.config.appliquerReglesConfig);
       x.addEventListener("input", CN.app.config.appliquerReglesConfig);
@@ -1314,6 +1581,27 @@
     CN.el.btnExportAnomalies.addEventListener("click", CN.app.exports.exporterAnomalies);
     CN.el.btnExportCalcul.addEventListener("click", CN.app.exports.exporterCalculCSV);
 
+    // Bouton paramètres avancés
+    if (CN.el.btnOpenParamCalcul) {
+      CN.el.btnOpenParamCalcul.addEventListener("click", CN.app.modal.ouvrirParamCalcul);
+    }
+
+    if (CN.el.btnSettingsClose) {
+      CN.el.btnSettingsClose.addEventListener("click", CN.app.modal.fermerParamCalcul);
+    }
+    if (CN.el.btnSettingsCancel) {
+      CN.el.btnSettingsCancel.addEventListener("click", CN.app.modal.fermerParamCalcul);
+    }
+    if (CN.el.btnSettingsSave) {
+      CN.el.btnSettingsSave.addEventListener("click", () => CN.app.modal.enregistrerParamCalcul());
+    }
+
+    [CN.el.paramArrondiActif, CN.el.paramArrondiMethode, CN.el.paramArrondiPrecision].forEach(x => {
+      if (!x) return;
+      x.addEventListener("change", CN.app.modal.majPreviewParamCalcul);
+      x.addEventListener("input", CN.app.modal.majPreviewParamCalcul);
+    });
+
     // Boutons mapping
     CN.el.btnCfgPegase.addEventListener("click", () => CN.app.modal.ouvrirModalMapping("pegase").catch(e => CN.ui.ajouterMessage("danger", e.message)));
     CN.el.btnCfgPix.addEventListener("click", () => CN.app.modal.ouvrirModalMapping("pix").catch(e => CN.ui.ajouterMessage("danger", e.message)));
@@ -1330,12 +1618,23 @@
       if (e.target === CN.el.modalOverlay) CN.app.modal.fermerModalMapping();
     });
 
+    if (CN.el.settingsOverlay) {
+      CN.el.settingsOverlay.addEventListener("click", (e) => {
+        if (e.target === CN.el.settingsOverlay) CN.app.modal.fermerParamCalcul();
+      });
+    }
+
     // Touche ESC => ferme la modal si elle est ouverte
     document.addEventListener("keydown", (e) => {
       if (e.key !== "Escape") return;
 
       if (CN.el.aboutOverlay && !CN.el.aboutOverlay.classList.contains("bloc-cache")) {
         CN.ui.afficherBloc(CN.el.aboutOverlay, false);
+        return;
+      }
+
+      if (CN.el.settingsOverlay && !CN.el.settingsOverlay.classList.contains("bloc-cache")) {
+        CN.app.modal.fermerParamCalcul();
         return;
       }
 

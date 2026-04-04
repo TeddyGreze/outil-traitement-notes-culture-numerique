@@ -10,9 +10,81 @@
   CN.data = CN.data || {};
   CN.csv = CN.csv || {};
 
-  // Arrondi à 2 décimales
+  // Arrondi classique au centième
   CN.data.arrondi2 = function (x) {
-    return Math.round((x + Number.EPSILON) * 100) / 100;
+    return CN.data.arrondirSelonConfig(x, "centieme", "classique");
+  };
+
+  CN.data.normaliserPrecisionArrondi = function (precision) {
+    const p = (precision ?? "").toString().trim().toLowerCase();
+    return ["centieme", "dixieme", "entier"].includes(p) ? p : "centieme";
+  };
+
+  CN.data.normaliserMethodeArrondi = function (methode) {
+    const m = (methode ?? "").toString().trim().toLowerCase();
+    return ["classique", "superieur", "inferieur"].includes(m) ? m : "classique";
+  };
+
+  CN.data.nbDecimalesPrecision = function (precision) {
+    const p = CN.data.normaliserPrecisionArrondi(precision);
+    if (p === "entier") return 0;
+    if (p === "dixieme") return 1;
+    return 2;
+  };
+
+  CN.data.facteurPrecision = function (precision) {
+    const p = CN.data.normaliserPrecisionArrondi(precision);
+    if (p === "entier") return 1;
+    if (p === "dixieme") return 10;
+    return 100;
+  };
+
+  CN.data.arrondirSelonConfig = function (valeur, precision, methode) {
+    const n = CN.data.toNombreFR(valeur);
+    if (!Number.isFinite(n)) return NaN;
+
+    const facteur = CN.data.facteurPrecision(precision);
+    const m = CN.data.normaliserMethodeArrondi(methode);
+
+    if (m === "superieur") {
+      return Math.ceil((n - Number.EPSILON) * facteur) / facteur;
+    }
+
+    if (m === "inferieur") {
+      return Math.floor((n + Number.EPSILON) * facteur) / facteur;
+    }
+
+    return Math.round((n + Number.EPSILON) * facteur) / facteur;
+  };
+
+  CN.data.formaterNombreBrut = function (valeur, separateurDecimal = ".") {
+    const n = CN.data.toNombreFR(valeur);
+    if (!Number.isFinite(n)) return "";
+
+    let s = n.toFixed(3).replace(/\.?0+$/, "");
+    if (separateurDecimal === ",") s = s.replace(".", ",");
+
+    return s;
+  };
+
+  CN.data.formaterNoteSelonConfig = function (valeur, config, separateurDecimal = ".") {
+    if (config?.arrondiActif === false) {
+      return CN.data.formaterNombreBrut(valeur, separateurDecimal);
+    }
+
+    const arrondie = CN.data.arrondirSelonConfig(
+      valeur,
+      config?.arrondiPrecision,
+      config?.arrondiMethode
+    );
+
+    if (!Number.isFinite(arrondie)) return "";
+
+    const nbDec = CN.data.nbDecimalesPrecision(config?.arrondiPrecision);
+    let s = arrondie.toFixed(nbDec);
+
+    if (separateurDecimal === ",") s = s.replace(".", ",");
+    return s;
   };
 
   // Normalise un texte pour comparer facilement des en-têtes

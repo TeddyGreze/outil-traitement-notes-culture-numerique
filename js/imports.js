@@ -310,7 +310,7 @@
   };
 
   // Import PIX (filtré : progression=1 et partage=OUI/O)
-  CN.imports.chargerPIX = async function (file, pointsPix, mappingPix) {
+  CN.imports.chargerPIX = async function (file, pointsPix, mappingPix, configArrondi) {
     const txt = await CN.csv.lireFichierTexte(file);
     const delim = CN.csv.detecterDelimiteur(txt.split("\n")[0] || ";");
     const tab = CN.csv.parserCSV(txt, delim);
@@ -384,8 +384,8 @@
         continue;
       }
 
-      // Eligible => calcul note
-      const notePix = CN.data.arrondi2(score * pointsPix);
+      // Eligible => calcul note brute
+      const notePix = Math.min(pointsPix, Math.max(0, score * pointsPix));
 
       // si plusieurs lignes : on garde le meilleur score
       const exist = parEtudiant.get(idRaw);
@@ -408,9 +408,24 @@
 
   // Import Présences (plusieurs fichiers possibles)
 
-  CN.imports.chargerPresences = async function (files, mappingPres) {
+  CN.imports.chargerPresences = async function (files, mappingPres, mappingPresParFichier) {
     const invalides = [];
     const agg = new Map();
+
+    function choisirColonnePourFichier(colSpecifique, colPartagee, colAuto, entetes) {
+      const candidates = [
+        (colSpecifique ?? "").toString().trim(),
+        (colPartagee ?? "").toString().trim(),
+        (colAuto ?? "").toString().trim()
+      ].filter(Boolean);
+
+      for (const col of candidates) {
+        if (Array.isArray(entetes) && entetes.includes(col)) {
+          return col;
+        }
+      }
+      return null;
+    }
 
     function getAgg(id) {
       let a = agg.get(id);
@@ -429,11 +444,13 @@
       const { entetes, lignes } = CN.csv.tableauVersObjets(tab);
 
       const auto = CN.imports.proposerMappingPres(entetes, lignes);
+      const cleFichier = CN.utils.cleFichier(f);
+      const mappingSpecifique = mappingPresParFichier?.[cleFichier] || null;
 
-      const colId = mappingPres?.colId || auto.colId;
-      const colNom = mappingPres?.colNom || auto.colNom;
-      const colPrenom = mappingPres?.colPrenom || auto.colPrenom;
-      const colScore5 = mappingPres?.colScore5 || auto.colScore5;
+      const colId = choisirColonnePourFichier(mappingSpecifique?.colId, mappingPres?.colId, auto.colId, entetes);
+      const colNom = choisirColonnePourFichier(mappingSpecifique?.colNom, mappingPres?.colNom, auto.colNom, entetes);
+      const colPrenom = choisirColonnePourFichier(mappingSpecifique?.colPrenom, mappingPres?.colPrenom, auto.colPrenom, entetes);
+      const colScore5 = choisirColonnePourFichier(mappingSpecifique?.colScore5, mappingPres?.colScore5, auto.colScore5, entetes);
 
       // si structure du fichier non reconnue : on note en invalide
       if (!colId || !colNom || !colPrenom || !colScore5) {
@@ -493,10 +510,11 @@
         id,
         nom: a.nom,
         prenom: a.prenom,
-        score5: CN.data.arrondi2(score5),
+        score5: score5,
         sources: Array.from(a.sources),
       });
     }
+
     return { map, invalides, fichiersCount: files.length };
   };
 
@@ -512,7 +530,7 @@
   };
 
   // Construction RD : convertit la note /20 en pointsRD
-  CN.imports.construireRD_depuisRaw = function (rdRaw, mappingRD, pointsRD, nomFichier) {
+  CN.imports.construireRD_depuisRaw = function (rdRaw, mappingRD, pointsRD, nomFichier, configArrondi) {
     const invalides = [];
     const map = new Map();
 
@@ -535,7 +553,7 @@
       if (!Number.isFinite(note20)) continue;
 
       // conversion /20 -> /pointsRD
-      const noteRD = CN.data.arrondi2((note20 / 20) * pointsRD);
+      const noteRD = Math.min(pointsRD, Math.max(0, (note20 / 20) * pointsRD));
 
       // N° étudiant invalide => anomalies
       if (!CN.data.estNumeroEtudiantValide(idRaw)) {
