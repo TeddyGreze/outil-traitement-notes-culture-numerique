@@ -106,4 +106,4 @@ Projet réalisé par **Teddy GREZE**.
 
 ## Version
 
-Version actuelle : **1.0.0**
+Version actuelle : **1.1.0**
