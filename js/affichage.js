@@ -66,6 +66,58 @@
     return CN.data.formaterNoteSelonConfig(valeur, config, ",");
   }
 
+    function formaterBaremeAffichage(valeur) {
+    const n = CN.data.toNombreFR(valeur);
+    if (!Number.isFinite(n)) return "0";
+
+    return n.toFixed(3).replace(/\.?0+$/, "").replace(".", ",");
+  }
+
+  function getComposantesActivesApercu() {
+    const comps = Array.isArray(CN.etat.composantes) ? CN.etat.composantes : [];
+    return comps.filter(c => c && c.actif);
+  }
+
+  function getCleColonneComposante(comp) {
+    const raw = (comp?.id || comp?.nom || "composante")
+      .toString()
+      .trim()
+      .toUpperCase()
+      .replace(/[^A-Z0-9]+/g, "_");
+
+    return `NOTE_COMP_${raw}`;
+  }
+
+  function getLibelleColonneComposante(comp) {
+    const nom = (comp?.nom || comp?.id || "Composante").toString().trim();
+    const poids = formaterBaremeAffichage(comp?.poids);
+    return `${nom} (/${poids})`;
+  }
+
+  function getValeurNoteComposantePourApercu(noteEtudiant, comp) {
+    if (!noteEtudiant || !comp) return "";
+
+    const noteDynamique = noteEtudiant.notesParComposante?.[comp.id];
+    if (Number.isFinite(noteDynamique)) {
+      return formaterNoteBruteAffichage(noteDynamique);
+    }
+
+    return "";
+  }
+
+  function construireColonnesComposantesApercu() {
+    return getComposantesActivesApercu().map(comp => ({
+      comp,
+      key: getCleColonneComposante(comp),
+      label: getLibelleColonneComposante(comp)
+    }));
+  }
+
+  // Expose les colonnes dynamiques pour les autres modules
+  CN.affichage.getColonnesComposantesActives = function () {
+    return construireColonnesComposantesApercu();
+  };  
+
   /*
      Construire les données du tableau "aperçu"
      - entetes : ordre des colonnes à afficher
@@ -83,13 +135,15 @@
       mappingPegase.colNote
     );
 
+    const colonnesComposantes = construireColonnesComposantesApercu();
+
     // CAS 1 : SANS PEGASE
     if (!avecPegase) {
       const entetes = ["N° étudiant", "Nom", "Prénom"];
 
-      if (config.usePix) entetes.push("NOTE_PIX");
-      if (config.usePres) entetes.push("NOTE_PRESENCES");
-      if (config.useRD) entetes.push("NOTE_RD");
+      for (const col of colonnesComposantes) {
+        entetes.push(col.key);
+      }
 
       entetes.push("NOTE_FINALE_20");
 
@@ -100,17 +154,8 @@
         "NOTE_FINALE_20": "Note finale (/20)"
       };
 
-      if (config.usePix) {
-        const pts = Number.isFinite(config.ptsPix) ? config.ptsPix : 0;
-        labels["NOTE_PIX"] = `Note PIX (/${pts})`;
-      }
-      if (config.usePres) {
-        const pts = Number.isFinite(config.ptsPres) ? config.ptsPres : 0;
-        labels["NOTE_PRESENCES"] = `Note présences (/${pts})`;
-      }
-      if (config.useRD) {
-        const pts = Number.isFinite(config.ptsRD) ? config.ptsRD : 0;
-        labels["NOTE_RD"] = `Note RD (/${pts})`;
+      for (const col of colonnesComposantes) {
+        labels[col.key] = col.label;
       }
 
       const ids = Array.from(notes.keys());
@@ -126,9 +171,9 @@
           "ANOMALIES": nbAno ? String(nbAno) : ""
         };
 
-        if (config.usePix) base["NOTE_PIX"] = formaterNoteBruteAffichage(n?.notePix);
-        if (config.usePres) base["NOTE_PRESENCES"] = formaterNoteBruteAffichage(n?.notePres);
-        if (config.useRD) base["NOTE_RD"] = formaterNoteBruteAffichage(n?.noteRD);
+        for (const col of colonnesComposantes) {
+          base[col.key] = getValeurNoteComposantePourApercu(n, col.comp);
+        }
 
         base["NOTE_FINALE_20"] = formaterNoteFinaleAffichage(n?.noteFinale, config);
 
@@ -146,9 +191,9 @@
       mappingPegase.colNote
     ];
 
-    if (config.usePix) entetes.push("NOTE_PIX");
-    if (config.usePres) entetes.push("NOTE_PRESENCES");
-    if (config.useRD) entetes.push("NOTE_RD");
+    for (const col of colonnesComposantes) {
+      entetes.push(col.key);
+    }
 
     entetes.push("NOTE_FINALE_20", "STATUT");
 
@@ -158,17 +203,8 @@
     labels[mappingPegase.colPrenom] = "Prénom";
     labels[mappingPegase.colNote] = libelleNotePegase(mappingPegase.colNote);
 
-    if (config.usePix) {
-      const pts = Number.isFinite(config.ptsPix) ? config.ptsPix : 0;
-      labels["NOTE_PIX"] = `Note PIX (/${pts})`;
-    }
-    if (config.usePres) {
-      const pts = Number.isFinite(config.ptsPres) ? config.ptsPres : 0;
-      labels["NOTE_PRESENCES"] = `Note présences (/${pts})`;
-    }
-    if (config.useRD) {
-      const pts = Number.isFinite(config.ptsRD) ? config.ptsRD : 0;
-      labels["NOTE_RD"] = `Note RD (/${pts})`;
+    for (const col of colonnesComposantes) {
+      labels[col.key] = col.label;
     }
 
     labels["NOTE_FINALE_20"] = "Note finale (/20)";
@@ -215,9 +251,9 @@
         ANOMALIES: nbAno ? String(nbAno) : ""
       };
 
-      if (config.usePix) base["NOTE_PIX"] = formaterNoteBruteAffichage(n?.notePix);
-      if (config.usePres) base["NOTE_PRESENCES"] = formaterNoteBruteAffichage(n?.notePres);
-      if (config.useRD) base["NOTE_RD"] = formaterNoteBruteAffichage(n?.noteRD);
+      for (const col of colonnesComposantes) {
+        base[col.key] = getValeurNoteComposantePourApercu(n, col.comp);
+      }
 
       base["NOTE_FINALE_20"] = formaterNoteFinaleAffichage(n?.noteFinale, config);
 
@@ -296,29 +332,41 @@
   /*
      Construire le bloc "Résumé"
      - stats : infos calculées dans app.js
-     - config : pondérations et composantes activées
-  */
+     - config : paramètres d'arrondi + mode PEGASE
+   */
   CN.affichage.construireResume = function (stats, config) {
     const wrap = document.createElement("div");
     wrap.className = "ligne";
 
-    const comp = [];
-    if (config.usePix) comp.push(`PIX=${config.ptsPix}`);
-    if (config.usePres) comp.push(`Présences=${config.ptsPres}`);
-    if (config.useRD) comp.push(`RD=${config.ptsRD}`);
+    const composantes = Array.isArray(stats?.composantes) ? stats.composantes : [];
+
+    const compResume = composantes.length
+      ? composantes
+        .map(c => `${c.nom}=${formaterBaremeAffichage(c.poids)}`)
+        .join(" ; ")
+      : "Aucune";
+
+    const detailsComposantes = composantes.length
+      ? composantes.map(c => {
+          const infoBaremeSource =
+            c.typeCalcul === "note20" && Number.isFinite(CN.data.toNombreFR(c.baremeSource))
+              ? ` ; barème source /${formaterBaremeAffichage(c.baremeSource)}`
+              : "";
+
+          return `${c.nom} (/${formaterBaremeAffichage(c.poids)}${infoBaremeSource}) : ${c.nbValides} valides - invalides : ${c.nbInvalides} - fichiers : ${c.nbFichiers}<br/>`;
+        }).join("")
+      : "Aucune composante active<br/>";
 
     wrap.innerHTML = `
     <div class="alerte info" style="flex:1">
       <b>Résumé</b><br/>
-      Composantes : <b>${comp.join(" ; ")}</b> (sur /20)<br/>
+      Composantes : <b>${compResume}</b> (sur /20)<br/>
       Arrondi : <b>${config.arrondiActif === false ? "Désactivé (note brute)" : `${libelleMethodeArrondi(config.arrondiMethode)} ${libellePrecisionArrondi(config.arrondiPrecision)}`}</b><br/>
       ${stats.avecPegase ? `Mode PEGASE : <b>${libelleModeRemplissage(config.modeRemplissage)}</b><br/>` : ``}
       <br/>
 
       ${stats.avecPegase ? `PEGASE : ${stats.pegaseLignes} lignes<br/>` : ``}
-      ${config.usePix ? `PIX : ${stats.pixValides} valides - invalides : ${stats.pixInvalides}<br/>` : ``}
-      ${config.usePres ? `Présences : ${stats.presFichiers} fichier(s) - invalides : ${stats.presInvalides}<br/>` : ``}
-      ${config.useRD ? `Recherche documentaire : ${stats.rdValides} valides - invalides : ${stats.rdInvalides}<br/>` : ``}
+      ${detailsComposantes}
       <br/>
       ${stats.avecPegase ? `Écritures PEGASE : <b>${stats.nbEcrits}</b> - ignorées : ${stats.nbIgnores} - ABI : ${stats.nbABI}<br/>` : ``}
       Anomalies : <b>${stats.nbAnomalies}</b>

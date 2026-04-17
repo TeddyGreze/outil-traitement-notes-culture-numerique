@@ -37,50 +37,62 @@
         <section class="card">
           <h2 class="card-title">Paramétrage</h2>
 
-          <!-- Total /20 (mis à jour par app.js) -->
-          <div class="points-summary" id="totalPointsDisplay">
-            <span>Total :</span>
-            <strong id="sumPoints">20,00</strong><span class="pts-max">/20</span>
+          <!-- Switch mode -->
+          <div class="mode-switch-wrap">
+            <div class="mode-switch" role="radiogroup" aria-label="Mode de saisie">
+              <label class="mode-switch-option">
+                <input id="modeClassique" name="modeSaisie" type="radio" value="classique" checked />
+                <span>Mode classique</span>
+              </label>
+
+              <label class="mode-switch-option">
+                <input id="modeLibre" name="modeSaisie" type="radio" value="libre" />
+                <span>Mode libre</span>
+              </label>
+            </div>
           </div>
 
-          <!-- Composante PIX -->
-          <div class="config-item">
-            <label class="checkbox-label" for="usePix">
-              <input id="usePix" type="checkbox" checked />
-              <span class="custom-checkbox"></span>
-              <span>PIX</span>
-            </label>
-            <input id="ptsPix" class="input-number" type="number" min="0" max="20" step="0.5" value="15" />
+          <!-- Bloc classique -->
+          <div id="configClassiqueBox">
+            <!-- Total /20 -->
+            <div class="points-summary" id="totalPointsDisplay">
+              <span>Total :</span>
+              <strong id="sumPoints">20,00</strong><span class="pts-max">/20</span>
+            </div>
+
+            <!-- Liste des composantes classiques générée dynamiquement par app.js -->
+            <div id="classicComposantesList"></div>
+
+            <div class="config-extra">
+              <button id="btnOpenParamCalcul" type="button" class="btn btn-outline w-100">
+                Paramètres avancés
+              </button>
+            </div>
           </div>
 
-          <!-- Composante Présences -->
-          <div class="config-item">
-            <label class="checkbox-label" for="usePres">
-              <input id="usePres" type="checkbox" checked />
-              <span class="custom-checkbox"></span>
-              <span>Présences</span>
-            </label>
-            <input id="ptsPres" class="input-number" type="number" min="0" max="20" step="0.5" value="5" />
+          <!-- Bloc libre -->
+          <div id="configLibreBox" class="bloc-cache">
+            <div class="points-summary" id="totalPointsDisplayLibre">
+              <span>Total :</span>
+              <strong id="sumPointsLibreMirror">20,00</strong><span class="pts-max">/20</span>
+            </div>
+
+            <div id="freeComposantesList" class="free-composantes-list"></div>
+
+            <div class="config-extra">
+              <button id="btnAddComposante" type="button" class="btn btn-outline w-100">
+                + Ajouter une composante
+              </button>
+            </div>
+
+            <div class="config-extra">
+              <button id="btnOpenParamCalculLibre" type="button" class="btn btn-outline w-100">
+                Paramètres avancés
+              </button>
+            </div>
           </div>
 
-          <!-- Composante Recherche documentaire -->
-          <div class="config-item">
-            <label class="checkbox-label" for="useRD">
-              <input id="useRD" type="checkbox" />
-              <span class="custom-checkbox"></span>
-              <span>Recherche doc.</span>
-            </label>
-            <input id="ptsRD" class="input-number" type="number" min="0" max="20" step="0.5" value="0" />
-          </div>
-
-          <!-- Paramètres avancés -->
-          <div class="config-extra">
-            <button id="btnOpenParamCalcul" type="button" class="btn btn-outline w-100">
-              Paramètres avancés
-            </button>
-          </div>
-
-          <!-- Erreurs de de paramétrage (somme ≠ 20) -->
+          <!-- Erreurs -->
           <div id="configError" class="alerte danger mini bloc-cache" style="margin-top:12px;"></div>
         </section>
       </aside>
@@ -95,74 +107,33 @@
             <div class="file-head">
               <div class="file-title-row">
                 <h3 class="file-title">Fichier modèle PEGASE (CSV)</h3>
-                <button id="btnCfgPegase" type="button" class="btn-icone btn-gear" title="Paramétrage colonnes (PEGASE)"
-                  disabled></button>
+
+                <div class="file-head-actions">
+                  <button id="btnCfgPegase" type="button" class="btn-icone btn-gear"
+                    title="Paramétrage colonnes (PEGASE)" disabled></button>
+
+                  <button id="btnClearPegase" type="button" class="btn-icone btn-clear-card" title="Vider cette carte"
+                    disabled>
+                    Vider
+                  </button>
+                </div>
               </div>
               <span class="status-pill status-wait">En attente</span>
             </div>
 
             <div class="dropzone dz-card" data-input="fichierPegase">
               <div class="dz-title">Importer fichier PEGASE</div>
-              <div class="dz-sub" id="dzPegaseName">Aucun fichier sélectionné</div>
+              <div class="dz-sub" id="dzPegaseName" data-dz-kind="peg">Aucun fichier sélectionné</div>
             </div>
             <input id="fichierPegase" class="input-file-hidden" type="file" accept=".csv,text/csv" />
           </section>
 
-          <!-- Import PIX -->
-          <section class="file-card" id="blocPix">
-            <div class="file-head">
-              <div class="file-title-row">
-                <h3 class="file-title">Fichier PIX (CSV)</h3>
-                <button id="btnCfgPix" type="button" class="btn-icone btn-gear" title="Paramétrage colonnes (PIX)"
-                  disabled></button>
-              </div>
-              <span class="status-pill status-wait">En attente</span>
-            </div>
-
-            <div class="dropzone dz-card" data-input="fichierPix">
-              <div class="dz-title">Importer fichier PIX</div>
-              <div class="dz-sub" id="dzPixName">Aucun fichier sélectionné</div>
-            </div>
-            <input id="fichierPix" class="input-file-hidden" type="file" accept=".csv,text/csv" />
-          </section>
-
-          <!-- Import Présences -->
-          <section class="file-card" id="blocPresences">
-            <div class="file-head">
-              <div class="file-title-row">
-                <h3 class="file-title">Fichiers de présence (CSV)</h3>
-                <button id="btnCfgPres" type="button" class="btn-icone btn-gear"
-                  title="Paramétrage colonnes (Présences)" disabled></button>
-              </div>
-              <span class="status-pill status-wait">En attente</span>
-            </div>
-
-            <div class="dropzone dz-card" data-input="fichiersPresences">
-              <div class="dz-title">Importer fichier(s) Présences</div>
-              <div class="dz-sub" id="dzPresName">Aucun fichier sélectionné</div>
-            </div>
-            <input id="fichiersPresences" class="input-file-hidden" type="file" accept=".csv,text/csv" multiple />
-          </section>
-
-          <!-- Import Recherche documentaire -->
-          <section class="file-card" id="blocRD">
-            <div class="file-head">
-              <div class="file-title-row">
-                <h3 class="file-title">Fichier Recherche documentaire (CSV)</h3>
-                <button id="btnCfgRD" type="button" class="btn-icone btn-gear" title="Paramétrage colonnes (RD)"
-                  disabled></button>
-              </div>
-              <span class="status-pill status-wait">En attente</span>
-            </div>
-
-            <div class="dropzone dz-card" data-input="fichierRD">
-              <div class="dz-title">Importer fichier RD</div>
-              <div class="dz-sub" id="dzRDName">Aucun fichier sélectionné</div>
-            </div>
-            <input id="fichierRD" class="input-file-hidden" type="file" accept=".csv,text/csv" />
-          </section>
-
+          <!-- Cartes classiques générées dynamiquement par app.js -->
+          <div id="classicImportsCards"></div>
         </div>
+
+        <!-- Imports du mode libre -->
+        <div class="imports-grid bloc-cache" id="importsFreeGrid" data-comps="0"></div>
       </main>
     </div>
 
@@ -335,6 +306,81 @@
 
       <div class="ligne boutons" style="justify-content:flex-end">
         <button id="btnAboutOk" type="button" class="btn btn-primary">OK</button>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Modal Réglages composante (mode libre) -->
+  <div id="compSettingsOverlay" class="modal-overlay bloc-cache" role="dialog" aria-modal="true">
+    <div class="modal modal-sm comp-settings-modal" role="document">
+
+      <div class="modal-entete">
+        <div id="compSettingsTitle" class="modal-titre">Réglages composante</div>
+        <button id="btnCompSettingsClose" type="button" class="btn-icone" title="Fermer">✕</button>
+      </div>
+
+      <div id="compSettingsHint" class="texte-gris comp-settings-hint"></div>
+
+      <div class="comp-settings-body">
+        <section class="comp-settings-section">
+          <div class="comp-settings-section-head">
+            <div class="comp-settings-section-title">Options</div>
+            <div class="comp-settings-section-text">
+              Paramètres utilisés pour l’import et le calcul de cette composante.
+            </div>
+          </div>
+
+          <div class="comp-settings-stack">
+            <label class="comp-settings-row comp-settings-row-check">
+              <div class="comp-settings-row-main">
+                <span class="comp-settings-row-title">Autoriser plusieurs fichiers</span>
+                <span class="comp-settings-row-help">
+                  Permet d’importer plusieurs fichiers pour cette composante.
+                </span>
+              </div>
+
+              <div class="comp-settings-row-control">
+                <span class="checkbox-label">
+                  <input id="compSettingsMulti" type="checkbox" />
+                  <span class="custom-checkbox"></span>
+                </span>
+              </div>
+            </label>
+
+            <div id="compSettingsBaremeWrap" class="comp-settings-row">
+              <div class="comp-settings-row-main">
+                <span class="comp-settings-row-title">Barème source de la note</span>
+                <span class="comp-settings-row-help">
+                  Indique sur combien la note lue dans le fichier est notée.
+                </span>
+              </div>
+
+              <div class="comp-settings-row-control">
+                <input id="compSettingsBaremeSource" type="number" min="0.01" step="0.5"
+                  class="input-number comp-settings-number" value="20" />
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="comp-settings-danger">
+          <div class="comp-settings-danger-head">
+            <div class="comp-settings-danger-title">Suppression</div>
+            <div class="comp-settings-danger-text">
+              Cette action supprime définitivement la composante du mode libre.
+            </div>
+          </div>
+
+          <button id="btnCompSettingsDelete" type="button" class="btn btn-outline comp-settings-delete">
+            Supprimer la composante
+          </button>
+        </section>
+      </div>
+
+      <div class="ligne boutons comp-settings-footer">
+        <button id="btnCompSettingsCancel" type="button" class="btn btn-outline">Annuler</button>
+        <button id="btnCompSettingsSave" type="button" class="btn btn-primary">Enregistrer</button>
       </div>
 
     </div>

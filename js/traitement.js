@@ -62,120 +62,110 @@
     return out;
   };
 
-  // Construction des notes
-  // - On crée une entrée par étudiant dès qu’il apparaît dans une composante
-  // - Puis on calcule : notePres / noteRD / notePix / noteFinale
-  CN.traitement.construireNotes = function (config, pix, pres, rd) {
+  // Construction dynamique des notes
+  // - On boucle sur toutes les composantes actives
+  // - Chaque composante ajoute sa contribution à la note finale
+  function getMapResultatComposante(composante) {
+    if (!composante || !composante.resultat) return new Map();
+
+    if (composante.typeCalcul === "pix") {
+      return composante.resultat.parEtudiant instanceof Map
+        ? composante.resultat.parEtudiant
+        : new Map();
+    }
+
+    return composante.resultat.map instanceof Map
+      ? composante.resultat.map
+      : new Map();
+  }
+
+  function getContributionComposante(composante, item) {
+    if (!composante || !item) return 0;
+
+    const poids = Number.isFinite(composante.poids) ? composante.poids : 0;
+
+    if (composante.typeCalcul === "pix") {
+      const note = item.noteComposante ?? 0;
+      return Number.isFinite(note) ? note : 0;
+    }
+
+    if (composante.typeCalcul === "presence") {
+      let score5 = item.score5 ?? 0;
+      if (!Number.isFinite(score5)) score5 = 0;
+
+      return Math.min(poids, Math.max(0, (score5 / 5) * poids));
+    }
+
+    if (composante.typeCalcul === "note20") {
+      const note = item.noteComposante ?? 0;
+      return Number.isFinite(note) ? note : 0;
+    }
+
+    return 0;
+  }
+
+  function assurerEtudiantNotes(notes, id, item) {
+    let etu = notes.get(id);
+
+    if (!etu) {
+      etu = {
+        id,
+        nom: "",
+        prenom: "",
+        notesParComposante: {},
+        sourcesParComposante: {},
+        noteFinale: 0
+      };
+      notes.set(id, etu);
+    }
+
+    if (item?.nom && !etu.nom) etu.nom = item.nom;
+    if (item?.prenom && !etu.prenom) etu.prenom = item.prenom;
+
+    return etu;
+  }
+
+  CN.traitement.construireNotesDynamiques = function (config, composantes) {
     const notes = new Map();
+    const compsActives = (composantes || []).filter(c => c && c.actif);
 
-    const idsPix = new Set();
-    const idsPres = new Set();
-    const idsRD = new Set();
+    // Index générique des ids présents par composante
+    const idsParComposante = {};
 
-    // base depuis PIX
-    if (config.usePix && pix) {
-      for (const [id, p] of pix.parEtudiant.entries()) {
-        idsPix.add(id);
-        notes.set(id, {
-          id,
-          nom: p.nom || "",
-          prenom: p.prenom || "",
-          notePix: p.notePix ?? 0,
-          notePres: 0,
-          noteRD: 0,
-          noteFinale: 0,
-          sourcesPres: [],
-        });
-      }
-    }
+    for (const comp of compsActives) {
+      const idsComp = new Set();
+      idsParComposante[comp.id] = idsComp;
 
-    // fusion depuis Présences
-    if (config.usePres && pres) {
-      for (const [id, pr] of pres.map.entries()) {
-        idsPres.add(id);
-        const exist = notes.get(id);
-        if (!exist) {
-          notes.set(id, {
-            id,
-            nom: pr.nom || "",
-            prenom: pr.prenom || "",
-            notePix: 0,
-            notePres: 0,
-            noteRD: 0,
-            noteFinale: 0,
-            sourcesPres: pr.sources || [],
-            scorePresence5: pr.score5 ?? 0,
-          });
-        } else {
-          exist.sourcesPres = pr.sources || [];
-          exist.scorePresence5 = pr.score5 ?? 0;
+      const mapComp = getMapResultatComposante(comp);
+
+      for (const [id, item] of mapComp.entries()) {
+        idsComp.add(id);
+
+        const etu = assurerEtudiantNotes(notes, id, item);
+        const contribution = getContributionComposante(comp, item);
+
+        etu.notesParComposante[comp.id] = contribution;
+
+        if (Array.isArray(item?.sources)) {
+          etu.sourcesParComposante[comp.id] = item.sources.slice();
         }
       }
     }
 
-    // fusion depuis RD
-    if (config.useRD && rd) {
-      for (const [id, r] of rd.map.entries()) {
-        idsRD.add(id);
-        const exist = notes.get(id);
-        if (!exist) {
-          notes.set(id, {
-            id,
-            nom: r.nom || "",
-            prenom: r.prenom || "",
-            notePix: 0,
-            notePres: 0,
-            noteRD: r.noteRD ?? 0,
-            noteFinale: 0,
-            sourcesPres: [],
-          });
-        } else {
-          exist.noteRD = r.noteRD ?? 0;
-        }
-      }
-    }
+    // Calcul de la note finale à partir de toutes les composantes actives
+    for (const etu of notes.values()) {
+      const noteFinaleBrute = compsActives.reduce((acc, comp) => {
+        const noteComp = etu.notesParComposante?.[comp.id];
+        return acc + (Number.isFinite(noteComp) ? noteComp : 0);
+      }, 0);
 
-    // calcul final des composantes + total
-    for (const v of notes.values()) {
-      // Présences : score /5 => conversion selon la pondération
-      if (config.usePres && pres) {
-        const pr = pres.map.get(v.id);
-        let score5 = pr ? (pr.score5 ?? 0) : 0;
-        if (!Number.isFinite(score5)) score5 = 0;
-
-        let ptsPres = config.ptsPres;
-        if (!Number.isFinite(ptsPres)) ptsPres = 0;
-
-        v.notePres = Math.min(ptsPres, Math.max(0, (score5 / 5) * ptsPres));
-      } else {
-        v.notePres = 0;
-      }
-
-      // RD : valeur brute déjà calculée dans imports
-      if (config.useRD && rd) {
-        const rr = rd.map.get(v.id);
-        v.noteRD = rr ? (rr.noteRD ?? 0) : 0;
-      } else {
-        v.noteRD = 0;
-      }
-
-      // PIX : valeur brute déjà calculée dans imports
-      v.notePix = config.usePix && pix ? (pix.parEtudiant.get(v.id)?.notePix ?? 0) : 0;
-
-      // Total brut
-      const noteFinaleBrute =
-        (v.notePix || 0) +
-        (v.notePres || 0) +
-        (v.noteRD || 0);
-
-      // Sécurité : borne entre 0 et 20
       const noteFinaleBornee = Math.min(20, Math.max(0, noteFinaleBrute));
 
       // Si l’arrondi est désactivé, on garde la note brute
       if (config.arrondiActif === false) {
-        v.noteFinale = noteFinaleBornee;
+        etu.noteFinale = noteFinaleBornee;
       } else {
-        v.noteFinale = CN.data.arrondirSelonConfig(
+        etu.noteFinale = CN.data.arrondirSelonConfig(
           noteFinaleBornee,
           config.arrondiPrecision,
           config.arrondiMethode
@@ -183,14 +173,87 @@
       }
     }
 
-    return { notes, idsPix, idsPres, idsRD };
+    return {
+      notes,
+      idsParComposante
+    };
   };
+
+  function getLibelleComposante(comp) {
+    return (comp?.nom || comp?.id || "Composante").toString().trim();
+  }
+
+  function normaliserSourceAnomalieComposante(comp) {
+    if (!comp) return "COMPOSANTE";
+
+    if (comp.typeCalcul === "pix") return "PIX";
+    if (comp.typeCalcul === "presence") return "PRESENCES";
+
+    if (comp.typeCalcul === "note20") {
+      if (comp.id === "rd") return "RECHERCHE_DOC";
+
+      return (comp.id || comp.nom || "NOTE20")
+        .toString()
+        .trim()
+        .toUpperCase()
+        .replace(/\s+/g, "_");
+    }
+
+    return (comp.id || comp.nom || "COMPOSANTE")
+      .toString()
+      .trim()
+      .toUpperCase()
+      .replace(/\s+/g, "_");
+  }
+
+  function raisonsPixToTexte(setRaisons) {
+    const s = setRaisons instanceof Set ? setRaisons : new Set();
+    const parts = [];
+    if (s.has("PARCOURS_NON_TERMINE")) parts.push("parcours non terminé (progression < 100%)");
+    if (s.has("RESULTATS_NON_PARTAGES")) parts.push("résultats non partagés");
+    if (s.has("SCORE_MANQUANT")) parts.push("score manquant");
+    return parts.join(" et ");
+  }
+
+  function construireMessageComposanteManquante(comp, resultatComp, id, causesTexte) {
+    const libelle = getLibelleComposante(comp);
+    let msg = "";
+
+    // Cas spécial PIX : on garde la logique métier spécifique
+    if (comp?.typeCalcul === "pix") {
+      msg = `${libelle} manquant: l'étudiant n'apparaît pas dans le fichier ${libelle}.`;
+
+      if (resultatComp?.nonEligibles?.has(id)) {
+        const info = resultatComp.nonEligibles.get(id);
+        const why = raisonsPixToTexte(info?.raisons);
+        msg = `${libelle} manquant: l'étudiant apparaît dans le fichier ${libelle} mais n'est pas pris en compte (${why || "conditions non remplies"}).`;
+      }
+
+      return msg + causesTexte;
+    }
+
+    // Cas présence : multi-fichiers
+    if (comp?.typeCalcul === "presence") {
+      msg = comp?.multiFichiers
+        ? `${libelle} manquant: l'étudiant n'apparaît dans aucun des fichiers importés pour cette composante.`
+        : `${libelle} manquant: l'étudiant n'apparaît pas dans le fichier ${libelle}.`;
+
+      return msg + causesTexte;
+    }
+
+    // Cas générique note /20 et autres futurs types
+    msg = comp?.multiFichiers
+      ? `${libelle} manquant: l'étudiant n'apparaît dans aucun des fichiers importés pour cette composante.`
+      : `${libelle} manquant: l'étudiant n'apparaît pas dans le fichier ${libelle}.`;
+
+    return msg + causesTexte;
+  }
 
   // Analyse des anomalies
   // - NUM_ETUDIANT_INVALIDE : N° étudiant non conforme (8 chiffres)
   // - INCONNU_PEGASE        : étudiant avec note mais absent de PEGASE
-  // - COMPOSANTE_MANQUANTE  : composante cochée mais pas de donnée pour cet étudiant
-  CN.traitement.analyserAnomalies = function (config, pegase, mappingPegase, pix, pres, rdBuilt, buildNotesResult) {
+  // - COMPOSANTE_MANQUANTE  : composante active mais pas de donnée pour cet étudiant
+  CN.traitement.analyserAnomalies = function (pegase, mappingPegase, composantes, buildNotesResult) {
     const anomalies = [];
     const avecPegase = !!(
       pegase &&
@@ -209,43 +272,27 @@
       ? CN.traitement.indexerPegaseParNomPrenom(pegase, mappingPegase)
       : new Map();
 
-    // N°étudiant invalides provenant des imports (avec suggestion si possible)
-    const invPix = config.usePix && pix
-      ? CN.traitement.proposerCorrectionsInvalides(pix.invalides, idxParNomPrenom, colIdPegase)
-      : [];
+    const composantesActives = (composantes || []).filter(c => c && c.actif);
 
-    const invPres = config.usePres && pres
-      ? CN.traitement.proposerCorrectionsInvalides(
-        pres.invalides.filter(x => x.source === "PRESENCES"),
-        idxParNomPrenom,
-        colIdPegase
-      )
-      : [];
+    // Causes possibles (quand un id invalide a une suggestion qui correspond à un vrai id PEGASE)
+    const causesParId = new Map();
 
-    const invRD = config.useRD && rdBuilt
-      ? CN.traitement.proposerCorrectionsInvalides(rdBuilt.invalides, idxParNomPrenom, colIdPegase)
-      : [];
-
-    // Causes possibles (quand un id invalide a une suggestion qui correspond a un vrai id PEGASE)
-    const causesParId = new Map(); // key: idCorrect => Array<{source,fichier,idTrouve}>
-    function addCause(idCorrect, inv) {
+    function addCause(idCorrect, comp, inv) {
       const pid = (idCorrect ?? "").toString().trim();
       if (!CN.data.estNumeroEtudiantValide(pid)) return;
+
       if (!causesParId.has(pid)) causesParId.set(pid, []);
       causesParId.get(pid).push({
-        source: inv.source || "",
-        fichier: inv.fichier || "",
-        idTrouve: inv.idTrouve || ""
+        composanteId: comp?.id || "",
+        source: inv?.source || "",
+        fichier: inv?.fichier || "",
+        idTrouve: inv?.idTrouve || ""
       });
     }
 
-    for (const inv of [...invPix, ...invPres, ...invRD]) {
-      if (inv?.propositionId) addCause(inv.propositionId, inv);
-    }
-
-    function causesTextePour(id, source) {
+    function causesTextePour(id, comp) {
       const arr = causesParId.get(id) || [];
-      const filt = arr.filter(x => (x.source || "").toUpperCase() === (source || "").toUpperCase());
+      const filt = arr.filter(x => x.composanteId === comp?.id);
       if (!filt.length) return "";
 
       const exemples = filt
@@ -253,32 +300,37 @@
         .map(x => `${x.idTrouve}${x.fichier ? ` (fichier: ${x.fichier})` : ""}`)
         .join(" ; ");
 
-      return ` Cause possible: numéro étudiant invalide dans ${source} (id trouvé: ${exemples}).`;
+      return ` Cause possible: numéro étudiant invalide dans ${getLibelleComposante(comp)} (id trouvé: ${exemples}).`;
     }
 
-    function raisonsPixToTexte(setRaisons) {
-      const s = setRaisons instanceof Set ? setRaisons : new Set();
-      const parts = [];
-      if (s.has("PARCOURS_NON_TERMINE")) parts.push("parcours non terminé (progression < 100%)");
-      if (s.has("RESULTATS_NON_PARTAGES")) parts.push("résultats non partagés");
-      if (s.has("SCORE_MANQUANT")) parts.push("score manquant");
-      return parts.join(" et ");
+    // 1) Invalides par composante (boucle dynamique)
+    for (const comp of composantesActives) {
+      const resultatComp = comp.resultat;
+      const invalidesBruts = Array.isArray(resultatComp?.invalides) ? resultatComp.invalides : [];
+
+      const invalidesCorriges = CN.traitement.proposerCorrectionsInvalides(
+        invalidesBruts,
+        idxParNomPrenom,
+        colIdPegase
+      );
+
+      for (const inv of invalidesCorriges) {
+        if (inv?.propositionId) addCause(inv.propositionId, comp, inv);
+
+        anomalies.push({
+          type: "NUM_ETUDIANT_INVALIDE",
+          source: inv.source || normaliserSourceAnomalieComposante(comp),
+          fichier: inv.fichier || "",
+          idTrouve: inv.idTrouve || "",
+          nom: inv.nom || "",
+          prenom: inv.prenom || "",
+          propositionId: inv.propositionId || "",
+          message: inv.message || `Numéro étudiant invalide (${getLibelleComposante(comp)}).`,
+        });
+      }
     }
 
-    for (const inv of [...invPix, ...invPres, ...invRD]) {
-      anomalies.push({
-        type: "NUM_ETUDIANT_INVALIDE",
-        source: inv.source || "",
-        fichier: inv.fichier || "",
-        idTrouve: inv.idTrouve || "",
-        nom: inv.nom || "",
-        prenom: inv.prenom || "",
-        propositionId: inv.propositionId || "",
-        message: inv.message || "Numéro étudiant invalide.",
-      });
-    }
-
-    // N°étudiants présents dans PEGASE
+    // 2) N° étudiants présents dans PEGASE
     const pegaseIds = new Set();
     const pegById = new Map();
 
@@ -308,7 +360,7 @@
       }
     }
 
-    // Composante manquante (si composante cochée mais pas de données)
+    // 3) Composantes manquantes (boucle dynamique)
     const idsCibles = new Set([
       ...Array.from(buildNotesResult.notes.keys()),
       ...Array.from(causesParId.keys())
@@ -323,29 +375,21 @@
 
       const details = [];
 
-      // PIX
-      if (config.usePix && !buildNotesResult.idsPix.has(id)) {
-        let msg = "PIX manquant: l'étudiant n'apparaît pas dans le fichier PIX.";
-        if (pix?.nonEligibles?.has(id)) {
-          const info = pix.nonEligibles.get(id);
-          const why = raisonsPixToTexte(info?.raisons);
-          msg = `PIX manquant: l'étudiant apparaît dans le fichier PIX mais n'est pas pris en compte (${why || "conditions non remplies"}).`;
-        }
-        msg += causesTextePour(id, "PIX");
-        details.push(msg);
-      }
+      for (const comp of composantesActives) {
+        const idsComp = buildNotesResult?.idsParComposante?.[comp.id] instanceof Set
+          ? buildNotesResult.idsParComposante[comp.id]
+          : new Set();
 
-      // PRESENCES
-      if (config.usePres && !buildNotesResult.idsPres.has(id)) {
-        let msg = `Présences manquantes: l'étudiant n'apparaît dans aucun des fichiers de présence importés.`;
-        msg += causesTextePour(id, "PRESENCES");
-        details.push(msg);
-      }
+        if (idsComp.has(id)) continue;
 
-      // RD
-      if (config.useRD && !buildNotesResult.idsRD.has(id)) {
-        let msg = `RD manquant: l'étudiant n'apparaît pas dans le fichier Recherche documentaire.`;
-        msg += causesTextePour(id, "RECHERCHE_DOC");
+        const resultatComp = comp.resultat;
+        const msg = construireMessageComposanteManquante(
+          comp,
+          resultatComp,
+          id,
+          causesTextePour(id, comp)
+        );
+
         details.push(msg);
       }
 
@@ -362,7 +406,7 @@
       }
     }
 
-    // Index anomalies par N° étudiant 
+    // 4) Index anomalies par N° étudiant
     const anomaliesParId = new Map();
     for (const a of anomalies) {
       const id = (a.idTrouve ?? "").toString().trim();
@@ -370,6 +414,7 @@
         if (!anomaliesParId.has(id)) anomaliesParId.set(id, []);
         anomaliesParId.get(id).push(a);
       }
+
       const pid = (a.propositionId ?? "").toString().trim();
       if (CN.data.estNumeroEtudiantValide(pid)) {
         if (!anomaliesParId.has(pid)) anomaliesParId.set(pid, []);

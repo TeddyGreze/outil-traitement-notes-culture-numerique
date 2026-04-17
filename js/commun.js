@@ -17,39 +17,189 @@
     return `${file.name}__${file.size}__${file.lastModified}`;
   };
 
+  CN.utils.normaliserBaremeSource = function (valeur, defaut = 20) {
+    const n = CN.data?.toNombreFR
+      ? CN.data.toNombreFR(valeur)
+      : Number((valeur ?? "").toString().trim().replace(",", "."));
+
+    if (!Number.isFinite(n) || n <= 0) return defaut;
+    return n;
+  };  
+
+  CN.utils.creerMappingVidePourType = function (typeCalcul) {
+    const type = (typeCalcul || "").toString().trim().toLowerCase();
+
+    if (type === "pix") {
+      return {
+        colId: null,
+        colNom: null,
+        colPrenom: null,
+        colScore: null,
+        colProg: null,
+        colShare: null
+      };
+    }
+
+    if (type === "presence") {
+      return {
+        colId: null,
+        colNom: null,
+        colPrenom: null,
+        colScore5: null
+      };
+    }
+
+    return {
+      colId: null,
+      colNom: null,
+      colPrenom: null,
+      colNote: null
+    };
+  };
+
+  CN.utils.mettreAJourTypeComposante = function (comp, typeCalcul) {
+    if (!comp) return;
+
+    const type = (typeCalcul || "note20").toString().trim().toLowerCase();
+
+    comp.typeCalcul = type;
+    comp.multiFichiers = (type === "presence" || type === "note20") ? !!comp.multiFichiers : false;
+    comp.mapping = CN.utils.creerMappingVidePourType(type);
+    comp.mappingParFichier = {};
+    comp.resultat = null;
+    comp.brut = null;
+
+    comp.baremeSource = type === "note20"
+      ? CN.utils.normaliserBaremeSource(comp.baremeSource, 20)
+      : null;
+  };
+
+  CN.utils.creerComposanteLibre = function (index) {
+    return {
+      id: `comp_${index}`,
+      nom: `Composante ${index}`,
+      actif: true,
+      poids: 0,
+      typeCalcul: "note20",
+      baremeSource: 20,
+      multiFichiers: false,
+      mapping: CN.utils.creerMappingVidePourType("note20"),
+      mappingParFichier: {},
+      resultat: null,
+      brut: null
+    };
+  };
+
+  CN.utils.creerComposantesModeLibreParDefaut = function () {
+    const c1 = CN.utils.creerComposanteLibre(1);
+    const c2 = CN.utils.creerComposanteLibre(2);
+
+    c1.poids = 10;
+    c2.poids = 10;
+
+    return [c1, c2];
+  };
+
+  // Crée les composantes du mode classique
+  CN.utils.creerComposantesModeClassique = function () {
+    return [
+      {
+        id: "pix",
+        nom: "PIX",
+        actif: true,
+        poids: 15,
+        typeCalcul: "pix",
+        baremeSource: null,
+        multiFichiers: false,
+        mapping: CN.utils.creerMappingVidePourType("pix"),
+        mappingParFichier: {},
+        resultat: null
+      },
+      {
+        id: "pres",
+        nom: "Présences",
+        actif: true,
+        poids: 5,
+        typeCalcul: "presence",
+        baremeSource: null,
+        multiFichiers: true,
+        mapping: CN.utils.creerMappingVidePourType("presence"),
+        mappingParFichier: {},
+        resultat: null
+      },
+      {
+        id: "rd",
+        nom: "Recherche documentaire",
+        actif: false,
+        poids: 0,
+        typeCalcul: "note20",
+        baremeSource: 20,
+        multiFichiers: false,
+        mapping: CN.utils.creerMappingVidePourType("note20"),
+        mappingParFichier: {},
+        resultat: null
+      }
+    ];
+  };
+
+  // Retourne une composante à partir de son id
+  CN.utils.getComposanteById = function (id) {
+    const comps = CN.etat?.composantes || [];
+    return comps.find(c => c && c.id === id) || null;
+  };
+
+  // Retourne uniquement les composantes actives
+  CN.utils.getComposantesActives = function () {
+    const comps = CN.etat?.composantes || [];
+    return comps.filter(c => c && c.actif);
+  };
+
+  // Indique si on est en mode libre
+  CN.utils.estModeLibre = function () {
+    return (CN.etat?.modeSaisie || "classique") === "libre";
+  };
+
+  // Indique si on est en mode classique
+  CN.utils.estModeClassique = function () {
+    return !CN.utils.estModeLibre();
+  };
+
   // Références
   CN.el = {
-    // Paramétrage (cases + pondérations)
-    usePix: document.getElementById("usePix"),
-    usePres: document.getElementById("usePres"),
-    useRD: document.getElementById("useRD"),
-    ptsPix: document.getElementById("ptsPix"),
-    ptsPres: document.getElementById("ptsPres"),
-    ptsRD: document.getElementById("ptsRD"),
+    // Mode de saisie
+    modeClassique: document.getElementById("modeClassique"),
+    modeLibre: document.getElementById("modeLibre"),
+    configClassiqueBox: document.getElementById("configClassiqueBox"),
+    configLibreBox: document.getElementById("configLibreBox"),
+
+    // Liste dynamique mode classique
+    classicComposantesList: document.getElementById("classicComposantesList"),
+
+    // Mode libre
+    freeComposantesList: document.getElementById("freeComposantesList"),
+    btnAddComposante: document.getElementById("btnAddComposante"),
+    btnOpenParamCalculLibre: document.getElementById("btnOpenParamCalculLibre"),
+    sumPointsLibreMirror: document.getElementById("sumPointsLibreMirror"),
+
+    // Imports
+    importsGrid: document.getElementById("importsGrid"),
+    importsFreeGrid: document.getElementById("importsFreeGrid"),
+    classicImportsCards: document.getElementById("classicImportsCards"),
+
+    // Paramétrage
     sumPoints: document.getElementById("sumPoints"),
     configError: document.getElementById("configError"),
-    modeRemplissage: document.getElementById("modeRemplissage"),
 
     // Avertissement navigateur
     safariWarning: document.getElementById("safariWarning"),
 
-    // Inputs fichiers
+    // Inputs fichiers PEGASE
     fichierPegase: document.getElementById("fichierPegase"),
-    fichierPix: document.getElementById("fichierPix"),
-    fichiersPresences: document.getElementById("fichiersPresences"),
-    fichierRD: document.getElementById("fichierRD"),
 
     // Textes affichés dans les dropzones
     dzPegaseName: document.getElementById("dzPegaseName"),
-    dzPixName: document.getElementById("dzPixName"),
-    dzPresName: document.getElementById("dzPresName"),
-    dzRDName: document.getElementById("dzRDName"),
 
-    // Cartes imports (pour afficher/masquer selon config)
-    blocPix: document.getElementById("blocPix"),
-    blocPresences: document.getElementById("blocPresences"),
-    blocRD: document.getElementById("blocRD"),
-
+    // Bouton à propos
     btnAbout: document.getElementById("btnAbout"),
     aboutOverlay: document.getElementById("aboutOverlay"),
     btnAboutClose: document.getElementById("btnAboutClose"),
@@ -61,11 +211,10 @@
     btnReinitialiser: document.getElementById("btnReinitialiser"),
     zoneMessages: document.getElementById("zoneMessages"),
 
-    // Boutons mapping (paramétrage colonnes)
+    // Bouton mapping PEGASE
     btnCfgPegase: document.getElementById("btnCfgPegase"),
-    btnCfgPix: document.getElementById("btnCfgPix"),
-    btnCfgPres: document.getElementById("btnCfgPres"),
-    btnCfgRD: document.getElementById("btnCfgRD"),
+
+    btnClearPegase: document.getElementById("btnClearPegase"),
 
     btnOpenParamCalcul: document.getElementById("btnOpenParamCalcul"),
 
@@ -107,6 +256,18 @@
     paramArrondiPrecision: document.getElementById("paramArrondiPrecision"),
     arrondiPreview: document.getElementById("arrondiPreview"),
 
+    // Modal réglages composante (mode libre)
+    compSettingsOverlay: document.getElementById("compSettingsOverlay"),
+    compSettingsTitle: document.getElementById("compSettingsTitle"),
+    compSettingsHint: document.getElementById("compSettingsHint"),
+    btnCompSettingsClose: document.getElementById("btnCompSettingsClose"),
+    btnCompSettingsCancel: document.getElementById("btnCompSettingsCancel"),
+    btnCompSettingsSave: document.getElementById("btnCompSettingsSave"),
+    btnCompSettingsDelete: document.getElementById("btnCompSettingsDelete"),
+    compSettingsMulti: document.getElementById("compSettingsMulti"),
+    compSettingsBaremeWrap: document.getElementById("compSettingsBaremeWrap"),
+    compSettingsBaremeSource: document.getElementById("compSettingsBaremeSource"),
+
     mapRow1: document.getElementById("mapRow1"),
     mapRow2: document.getElementById("mapRow2"),
     mapRow3: document.getElementById("mapRow3"),
@@ -123,14 +284,14 @@
 
   // État global (données importées + mappings + résultats)
   CN.etat = {
+    // Mode actuel de configuration
+    modeSaisie: "classique",
+
+    // Liste dynamique des composantes
+    composantes: CN.utils.creerComposantesModeClassique(),
+
     // Config courante (mise à jour par app.js)
     config: {
-      usePix: true,
-      usePres: true,
-      useRD: false,
-      ptsPix: 15,
-      ptsPres: 5,
-      ptsRD: 0,
       modeRemplissage: "ne_rien_ecraser",
       arrondiActif: true,
       arrondiMethode: "classique",
@@ -139,26 +300,12 @@
 
     // Données importées
     pegase: null,
-    pix: null,
-    pres: null,
-    rdRaw: null,
-    rd: null,
 
-    // Mappings choisis (colonnes)
+    // Mapping PEGASE
     mappingPegase: { colId: null, colNom: null, colPrenom: null, colNote: null, delimiteur: ";" },
-    mappingRD: { colId: null, colNom: null, colPrenom: null, colNote: null },
-
-    // PIX : mapping normal + colonnes avancées (progression/partage)
-    mappingPix: { colId: null, colNom: null, colPrenom: null, colScore: null, colProg: null, colShare: null },
-
-    mappingPres: { colId: null, colNom: null, colPrenom: null, colScore5: null },
-    mappingPresParFichier: {},
 
     // En-têtes mémorisés
     entetesPegase: null,
-    entetesPix: null,
-    entetesPres: null,
-    entetesRD: null,
 
     // Résultats calculés
     notes: null,
@@ -168,12 +315,21 @@
     apercu: null,
     modeSansPegase: false,
     analyseDejaLancee: false,
+
+    // Mode libre
+    composantesLibres: null,
+    compteurComposantesLibres: 2,
+    fichiersComposantes: {},
+
+    // Mode classique dynamique
+    composantesClassiques: CN.utils.creerComposantesModeClassique(),
+    fichiersComposantesClassiques: {},
   };
 
   CN.meta = {
     prenom: "Teddy",
     nom: "GREZE",
-    version: "1.1.0"
+    version: "1.2.0"
   };
 
   CN.ui = CN.ui || {};
@@ -205,9 +361,18 @@
 
   // Met à jour le texte sous les dropzones (nom de fichier / nombre de fichiers)
   CN.ui.setDZText = function (kind, files) {
-    if (kind === "peg") CN.el.dzPegaseName.textContent = files?.length ? files[0].name : "Aucun fichier sélectionné";
-    if (kind === "pix") CN.el.dzPixName.textContent = files?.length ? files[0].name : "Aucun fichier sélectionné";
-    if (kind === "pres") CN.el.dzPresName.textContent = files?.length ? `${files.length} fichier(s) sélectionné(s)` : "Aucun fichier sélectionné";
-    if (kind === "rd") CN.el.dzRDName.textContent = files?.length ? files[0].name : "Aucun fichier sélectionné";
+    let texte = "Aucun fichier sélectionné";
+
+    if (kind === "peg") {
+      texte = files?.length ? files[0].name : "Aucun fichier sélectionné";
+    }
+
+    document.querySelectorAll(`[data-dz-kind="${kind}"]`).forEach(node => {
+      node.textContent = texte;
+    });
+
+    if (kind === "peg" && CN.el.dzPegaseName) {
+      CN.el.dzPegaseName.textContent = texte;
+    }
   };
 })();

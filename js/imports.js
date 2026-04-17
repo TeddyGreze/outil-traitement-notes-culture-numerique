@@ -108,9 +108,10 @@
     };
   };
 
-  // RD : N° étudiant, Nom, Prénom, Note
-  CN.imports.proposerMappingRD = function (entetes, lignes = []) {
+  // Composante générique "note sur 20" : N° étudiant, Nom, Prénom, Note
+  CN.imports.proposerMappingNote20 = function (entetes, lignes = [], baremeSource = 20) {
     const dejaPris = new Set();
+    const baremeTxt = String(Number(CN.utils.normaliserBaremeSource(baremeSource, 20))).replace(/\.0+$/, "");
 
     const colId = detecterColonne(entetes, [
       "N° étudiant",
@@ -144,17 +145,20 @@
     if (colPrenom) dejaPris.add(colPrenom);
 
     const colNote = detecterColonne(entetes, [
-      "Note Recherche documentaire",
+      `NOTE /${baremeTxt}`,
+      `NOTE/${baremeTxt}`,
+      `NOTE SUR ${baremeTxt}`,
+      `NOTE ${baremeTxt}`,
+      `TOTAL /${baremeTxt}`,
+      `TOTAL SUR ${baremeTxt}`,
+      `SCORE /${baremeTxt}`,
+      `SCORE SUR ${baremeTxt}`,
+      `RESULTAT /${baremeTxt}`,
+      `RESULTAT SUR ${baremeTxt}`,
       "NOTE RECHERCHE DOCUMENTAIRE",
-      "Note Recherche",
-      "NOTE_RECHERCHE",
       "NOTE RECHERCHE",
       "NOTE_RD",
       "NOTE RD",
-      "NOTE /20",
-      "NOTE/20",
-      "NOTE SUR 20",
-      "NOTE 20",
       "NOTE"
     ], lignes, dejaPris);
 
@@ -291,6 +295,29 @@
     return { colId, colNom, colPrenom, colScore5 };
   };
 
+  // Propose automatiquement le mapping selon le type de calcul de la composante
+  CN.imports.proposerMappingComposante = function (composante, entetes, lignes = []) {
+    const typeCalcul = (composante?.typeCalcul || "").toString().trim().toLowerCase();
+
+    if (typeCalcul === "pix") {
+      return CN.imports.proposerMappingPIX(entetes, lignes);
+    }
+
+    if (typeCalcul === "presence") {
+      return CN.imports.proposerMappingPres(entetes, lignes);
+    }
+
+    if (typeCalcul === "note20") {
+      return CN.imports.proposerMappingNote20(
+        entetes,
+        lignes,
+        composante?.baremeSource ?? 20
+      );
+    }
+
+    return {};
+  };
+
   // Import PEGASE
   CN.imports.chargerPEGASE = async function (file) {
     const txt = await CN.csv.lireFichierTexte(file);
@@ -385,12 +412,12 @@
       }
 
       // Eligible => calcul note brute
-      const notePix = Math.min(pointsPix, Math.max(0, score * pointsPix));
+      const noteComposante = Math.min(pointsPix, Math.max(0, score * pointsPix));
 
       // si plusieurs lignes : on garde le meilleur score
       const exist = parEtudiant.get(idRaw);
       if (!exist || score > exist.score) {
-        parEtudiant.set(idRaw, { id: idRaw, nom, prenom, score, notePix });
+        parEtudiant.set(idRaw, { id: idRaw, nom, prenom, score, noteComposante });
       }
     }
 
@@ -518,10 +545,10 @@
     return { map, invalides, fichiersCount: files.length };
   };
 
-  // Import RD (recherche documentaire)
+  // Import générique "note sur 20"
 
-  // Lecture
-  CN.imports.chargerRD_brut = async function (file) {
+  // Lecture brute d'une composante notée sur 20
+  CN.imports.chargerNote20Brut = async function (file) {
     const txt = await CN.csv.lireFichierTexte(file);
     const delim = CN.csv.detecterDelimiteur(txt.split("\n")[0] || ";");
     const tab = CN.csv.parserCSV(txt, delim);
@@ -529,22 +556,32 @@
     return { delim, entetes, lignes };
   };
 
-  // Construction RD : convertit la note /20 en pointsRD
-  CN.imports.construireRD_depuisRaw = function (rdRaw, mappingRD, pointsRD, nomFichier, configArrondi) {
+  // Construction d'une composante générique notée sur 20
+  // Conversion /20 => /points de la composante
+  CN.imports.construireComposanteNote20 = function (
+    raw,
+    mappingNote20,
+    pointsComposante,
+    baremeSource,
+    nomFichier,
+    configArrondi,
+    sourceAnomalie = "NOTE20"
+  ) {
     const invalides = [];
     const map = new Map();
 
-    const colId = mappingRD.colId;
-    const colNom = mappingRD.colNom;
-    const colPrenom = mappingRD.colPrenom;
-    const colNote = mappingRD.colNote;
+    const colId = mappingNote20.colId;
+    const colNom = mappingNote20.colNom;
+    const colPrenom = mappingNote20.colPrenom;
+    const colNote = mappingNote20.colNote;
 
-    // si mapping incomplet : pas d’import RD
+    const bareme = CN.utils.normaliserBaremeSource(baremeSource, 20);
+
     if (!colId || !colNom || !colPrenom || !colNote) {
-      return { ok: false, map, invalides, totalLignes: rdRaw.lignes.length, nbValides: 0 };
+      return { ok: false, map, invalides, totalLignes: raw.lignes.length, nbValides: 0 };
     }
 
-    for (const r of rdRaw.lignes) {
+    for (const r of raw.lignes) {
       const idRaw = (r[colId] ?? "").toString().trim();
       const nom = (r[colNom] ?? "").toString().trim();
       const prenom = (r[colPrenom] ?? "").toString().trim();
@@ -552,30 +589,274 @@
 
       if (!Number.isFinite(note20)) continue;
 
-      // conversion /20 -> /pointsRD
-      const noteRD = Math.min(pointsRD, Math.max(0, (note20 / 20) * pointsRD));
+      const noteSourceBornee = Math.min(bareme, Math.max(0, note20));
 
-      // N° étudiant invalide => anomalies
+      const noteComposante = Math.min(
+        pointsComposante,
+        Math.max(0, (noteSourceBornee / bareme) * pointsComposante)
+      );
+
       if (!CN.data.estNumeroEtudiantValide(idRaw)) {
         invalides.push({
-          source: "RECHERCHE_DOC",
+          source: sourceAnomalie,
           fichier: nomFichier || "",
           idTrouve: idRaw,
           nom,
           prenom,
-          note: noteRD,
-          message: "Numéro étudiant invalide (recherche documentaire).",
+          note: noteComposante,
+          message: `Numéro étudiant invalide (${sourceAnomalie.toLowerCase()}).`,
         });
         continue;
       }
 
-      // si doublons : on garde la meilleure note /20
       const exist = map.get(idRaw);
-      if (!exist || note20 > exist.note20) {
-        map.set(idRaw, { id: idRaw, nom, prenom, note20, noteRD });
+      if (!exist || noteSourceBornee > exist.note20) {
+        map.set(idRaw, {
+          id: idRaw,
+          nom,
+          prenom,
+          note20: noteSourceBornee,
+          baremeSource: bareme,
+          noteComposante
+        });
       }
     }
 
-    return { ok: true, map, invalides, totalLignes: rdRaw.lignes.length, nbValides: map.size };
+    return { ok: true, map, invalides, totalLignes: raw.lignes.length, nbValides: map.size };
+  };
+
+  CN.imports.chargerNotes20Multiples = async function (
+    files,
+    mappingNote20,
+    mappingNote20ParFichier,
+    pointsComposante,
+    baremeSource,
+    configArrondi,
+    sourceAnomalie = "NOTE20"
+  ) {
+    const invalides = [];
+    const agg = new Map();
+    let totalLignes = 0;
+
+    const bareme = CN.utils.normaliserBaremeSource(baremeSource, 20);
+
+    function choisirColonnePourFichier(colSpecifique, colPartagee, colAuto, entetes) {
+      const candidates = [
+        (colSpecifique ?? "").toString().trim(),
+        (colPartagee ?? "").toString().trim(),
+        (colAuto ?? "").toString().trim()
+      ].filter(Boolean);
+
+      for (const col of candidates) {
+        if (Array.isArray(entetes) && entetes.includes(col)) {
+          return col;
+        }
+      }
+      return null;
+    }
+
+    function getAgg(id) {
+      let a = agg.get(id);
+      if (!a) {
+        a = {
+          id,
+          nom: "",
+          prenom: "",
+          notesParFichier: new Map(),
+          sources: new Set()
+        };
+        agg.set(id, a);
+      }
+      return a;
+    }
+
+    for (const f of files) {
+      const raw = await CN.imports.chargerNote20Brut(f);
+      totalLignes += Array.isArray(raw.lignes) ? raw.lignes.length : 0;
+
+      const auto = CN.imports.proposerMappingNote20(raw.entetes, raw.lignes, bareme);
+      const cleFichier = CN.utils.cleFichier(f);
+      const mappingSpecifique = mappingNote20ParFichier?.[cleFichier] || null;
+
+      const colId = choisirColonnePourFichier(mappingSpecifique?.colId, mappingNote20?.colId, auto.colId, raw.entetes);
+      const colNom = choisirColonnePourFichier(mappingSpecifique?.colNom, mappingNote20?.colNom, auto.colNom, raw.entetes);
+      const colPrenom = choisirColonnePourFichier(mappingSpecifique?.colPrenom, mappingNote20?.colPrenom, auto.colPrenom, raw.entetes);
+      const colNote = choisirColonnePourFichier(mappingSpecifique?.colNote, mappingNote20?.colNote, auto.colNote, raw.entetes);
+
+      if (!colId || !colNom || !colPrenom || !colNote) {
+        invalides.push({
+          source: sourceAnomalie,
+          fichier: f.name,
+          idTrouve: "",
+          nom: "",
+          prenom: "",
+          message: `${sourceAnomalie} : paramétrage requis - colonnes attendues introuvables.`,
+        });
+        continue;
+      }
+
+      for (const r of raw.lignes) {
+        const idRaw = (r[colId] ?? "").toString().trim();
+        const nom = (r[colNom] ?? "").toString().trim();
+        const prenom = (r[colPrenom] ?? "").toString().trim();
+        const note20 = CN.data.toNombreFR(r[colNote]);
+
+        if (!Number.isFinite(note20)) continue;
+
+        if (!CN.data.estNumeroEtudiantValide(idRaw)) {
+          invalides.push({
+            source: sourceAnomalie,
+            fichier: f.name,
+            idTrouve: idRaw,
+            nom,
+            prenom,
+            note: note20,
+            message: `Numéro étudiant invalide (${sourceAnomalie.toLowerCase()}).`,
+          });
+          continue;
+        }
+
+        const a = getAgg(idRaw);
+        if (nom && !a.nom) a.nom = nom;
+        if (prenom && !a.prenom) a.prenom = prenom;
+        a.sources.add(f.name);
+
+        const noteBornee = Math.min(bareme, Math.max(0, note20));
+        const prev = a.notesParFichier.get(f.name);
+
+        if (!Number.isFinite(prev) || noteBornee > prev) {
+          a.notesParFichier.set(f.name, noteBornee);
+        }
+      }
+    }
+
+    const map = new Map();
+
+    for (const [id, a] of agg.entries()) {
+      const sommeNotes20 = Array.from(a.notesParFichier.values())
+        .reduce((acc, v) => acc + (Number.isFinite(v) ? v : 0), 0);
+
+      const note20Finale = Math.min(bareme, sommeNotes20);
+
+      const noteComposante = Math.min(
+        pointsComposante,
+        Math.max(0, (note20Finale / bareme) * pointsComposante)
+      );
+
+      map.set(id, {
+        id,
+        nom: a.nom,
+        prenom: a.prenom,
+        note20: note20Finale,
+        baremeSource: bareme,
+        noteComposante,
+        sources: Array.from(a.sources),
+      });
+    }
+
+    return {
+      ok: true,
+      map,
+      invalides,
+      totalLignes,
+      nbValides: map.size,
+      fichiersCount: files.length
+    };
+  };
+
+  // Import générique d'une composante selon son typeCalcul
+  CN.imports.chargerComposante = async function (composante, files, config) {
+    const comp = composante || {};
+    const typeCalcul = (comp.typeCalcul || "").toString().trim().toLowerCase();
+    const listFiles = Array.isArray(files) ? files.filter(Boolean) : [];
+    const points = Number.isFinite(comp.poids) ? comp.poids : 0;
+
+    if (typeCalcul === "pix") {
+      if (!listFiles.length) {
+        return {
+          brut: null,
+          resultat: { parEtudiant: new Map(), invalides: [], totalLignes: 0, nbValides: 0 }
+        };
+      }
+
+      return {
+        brut: null,
+        resultat: await CN.imports.chargerPIX(
+          listFiles[0],
+          points,
+          comp.mapping || {},
+          config
+        )
+      };
+    }
+
+    if (typeCalcul === "presence") {
+      if (!listFiles.length) {
+        return {
+          brut: null,
+          resultat: { map: new Map(), invalides: [], fichiersCount: 0 }
+        };
+      }
+
+      return {
+        brut: null,
+        resultat: await CN.imports.chargerPresences(
+          listFiles,
+          comp.mapping || {},
+          comp.mappingParFichier || {}
+        )
+      };
+    }
+
+    if (typeCalcul === "note20") {
+      if (!listFiles.length) {
+        return {
+          brut: null,
+          resultat: { ok: true, map: new Map(), invalides: [], totalLignes: 0, nbValides: 0 }
+        };
+      }
+
+      const sourceAnomalie = comp.id === "rd"
+        ? "RECHERCHE_DOC"
+        : ((comp.id || comp.nom || "NOTE20")
+          .toString()
+          .trim()
+          .toUpperCase()
+          .replace(/\s+/g, "_"));
+
+      const baremeSource = CN.utils.normaliserBaremeSource(comp.baremeSource, 20);
+
+      // multi-fichiers pour les composantes libres
+      if (comp.multiFichiers) {
+        return {
+          brut: null,
+          resultat: await CN.imports.chargerNotes20Multiples(
+            listFiles,
+            comp.mapping || {},
+            comp.mappingParFichier || {},
+            points,
+            baremeSource,
+            config,
+            sourceAnomalie
+          )
+        };
+      }
+
+      const brut = await CN.imports.chargerNote20Brut(listFiles[0]);
+
+      const resultat = CN.imports.construireComposanteNote20(
+        brut,
+        comp.mapping || {},
+        points,
+        baremeSource,
+        listFiles[0].name,
+        config,
+        sourceAnomalie
+      );
+
+      return { brut, resultat };
+    }
+
+    throw new Error(`Type de calcul non pris en charge pour la composante « ${comp.nom || comp.id || "inconnue"} ».`);
   };
 })();
