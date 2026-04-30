@@ -11,6 +11,183 @@
   const CN = window.CN;
   CN.affichage = CN.affichage || {};
 
+  const NB_LIGNES_PAR_PAGE = 50;
+
+  function getEtatPagination(cle) {
+    CN.etat.pagination = CN.etat.pagination || {};
+    CN.etat.pagination[cle] = CN.etat.pagination[cle] || {
+      page: 1,
+      parPage: NB_LIGNES_PAR_PAGE
+    };
+
+    const etat = CN.etat.pagination[cle];
+
+    if (!Number.isFinite(etat.page) || etat.page < 1) {
+      etat.page = 1;
+    }
+
+    if (!Number.isFinite(etat.parPage) || etat.parPage < 1) {
+      etat.parPage = NB_LIGNES_PAR_PAGE;
+    }
+
+    return etat;
+  }
+
+  CN.affichage.resetPagination = function (cle) {
+    const etat = getEtatPagination(cle);
+    etat.page = 1;
+  };
+
+  function getPagesAffichees(page, nbPages) {
+    if (nbPages <= 7) {
+      return Array.from({ length: nbPages }, (_, i) => i + 1);
+    }
+
+    const pages = [1];
+
+    if (page > 3) {
+      pages.push("...");
+    }
+
+    const debut = Math.max(2, page - 1);
+    const fin = Math.min(nbPages - 1, page + 1);
+
+    for (let p = debut; p <= fin; p++) {
+      pages.push(p);
+    }
+
+    if (page < nbPages - 2) {
+      pages.push("...");
+    }
+
+    pages.push(nbPages);
+
+    return pages;
+  }
+
+  function remplirPaginationHTML(paginationEl, cle, totalLignes, onChange) {
+    if (!paginationEl) return;
+
+    const etat = getEtatPagination(cle);
+    const nbPages = Math.max(1, Math.ceil(totalLignes / etat.parPage));
+
+    etat.page = Math.min(Math.max(1, etat.page), nbPages);
+
+    if (totalLignes === 0) {
+      paginationEl.innerHTML = `
+        <div class="table-pagination-info">Aucune ligne à afficher</div>
+      `;
+      return;
+    }
+
+    const debut = ((etat.page - 1) * etat.parPage) + 1;
+    const fin = Math.min(etat.page * etat.parPage, totalLignes);
+
+    const pages = getPagesAffichees(etat.page, nbPages);
+
+    const boutonsPages = pages.map(p => {
+      if (p === "...") {
+        return `<span class="table-page-ellipsis">…</span>`;
+      }
+
+      return `
+        <button
+          type="button"
+          class="table-page-btn ${p === etat.page ? "active" : ""}"
+          data-page="${p}"
+        >
+          ${p}
+        </button>
+      `;
+    }).join("");
+
+    paginationEl.innerHTML = `
+      <div class="table-pagination-info">
+        Lignes ${debut}-${fin} sur ${totalLignes} - page ${etat.page}/${nbPages}
+      </div>
+
+      <div class="table-pagination-actions">
+        <button
+          type="button"
+          class="table-page-btn"
+          data-page="prev"
+          ${etat.page <= 1 ? "disabled" : ""}
+        >
+          Précédent
+        </button>
+
+        ${boutonsPages}
+
+        <button
+          type="button"
+          class="table-page-btn"
+          data-page="next"
+          ${etat.page >= nbPages ? "disabled" : ""}
+        >
+          Suivant
+        </button>
+      </div>
+    `;
+
+    paginationEl.querySelectorAll("[data-page]").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const action = btn.getAttribute("data-page");
+
+        if (action === "prev") {
+          etat.page = Math.max(1, etat.page - 1);
+        } else if (action === "next") {
+          etat.page = Math.min(nbPages, etat.page + 1);
+        } else {
+          const p = Number(action);
+          if (Number.isFinite(p)) {
+            etat.page = Math.min(Math.max(1, p), nbPages);
+          }
+        }
+
+        if (typeof onChange === "function") {
+          onChange();
+        }
+      });
+    });
+  }
+
+  CN.affichage.remplirTableHTMLPagination = function (
+    tableHead,
+    tableBody,
+    paginationEl,
+    clePagination,
+    entetes,
+    lignes,
+    labels,
+    onChange
+  ) {
+    const toutesLesLignes = Array.isArray(lignes) ? lignes : [];
+    const etat = getEtatPagination(clePagination);
+
+    const nbPages = Math.max(1, Math.ceil(toutesLesLignes.length / etat.parPage));
+    etat.page = Math.min(Math.max(1, etat.page), nbPages);
+
+    const debut = (etat.page - 1) * etat.parPage;
+    const fin = debut + etat.parPage;
+
+    const lignesPage = toutesLesLignes.slice(debut, fin);
+
+    CN.affichage.remplirTableHTML(
+      tableHead,
+      tableBody,
+      entetes,
+      lignesPage,
+      labels
+    );
+
+    remplirPaginationHTML(
+      paginationEl,
+      clePagination,
+      toutesLesLignes.length,
+      onChange
+    );
+  };
+
   function libelleNotePegase(colNote) {
     const raw = (colNote ?? "").toString().trim();
     if (!raw) return "Note";
@@ -66,7 +243,7 @@
     return CN.data.formaterNoteSelonConfig(valeur, config, ",");
   }
 
-    function formaterBaremeAffichage(valeur) {
+  function formaterBaremeAffichage(valeur) {
     const n = CN.data.toNombreFR(valeur);
     if (!Number.isFinite(n)) return "0";
 
@@ -116,7 +293,7 @@
   // Expose les colonnes dynamiques pour les autres modules
   CN.affichage.getColonnesComposantesActives = function () {
     return construireColonnesComposantesApercu();
-  };  
+  };
 
   /*
      Construire les données du tableau "aperçu"
@@ -296,9 +473,15 @@
      - recherche texte (numéro étudiant/nom/prénom)
      - filtre anomalies (tous / avec / sans)
   */
-  CN.affichage.filtrerApercu = function (apercu) {
-    const q = (CN.el.recherche.value ?? "").toString().trim().toUpperCase();
-    const filtre = CN.el.filtreAnomalies.value;
+  CN.affichage.filtrerApercu = function (apercu, options = {}) {
+    if (!apercu) return;
+
+    if (options.resetPage) {
+      CN.affichage.resetPagination("apercu");
+    }
+
+    const q = (CN.el.recherche?.value ?? "").toString().trim().toUpperCase();
+    const filtre = CN.el.filtreAnomalies?.value || "tous";
 
     const entetes = apercu.entetes;
 
@@ -320,12 +503,97 @@
       return matchQ && matchA;
     });
 
-    CN.affichage.remplirTableHTML(
+    CN.affichage.remplirTableHTMLPagination(
       CN.el.tableApercuHead,
       CN.el.tableApercuBody,
+      CN.el.paginationApercu,
+      "apercu",
       entetes,
       lignes,
-      apercu.labels
+      apercu.labels,
+      () => CN.affichage.filtrerApercu(apercu)
+    );
+  };
+
+  /*
+   Remplit la liste des types d'anomalies disponibles
+   - La liste est générée à partir des anomalies réellement présentes
+   - Exemple : COMPOSANTE_MANQUANTE, INCONNU_PEGASE, NUM_ETUDIANT_INVALIDE
+*/
+  CN.affichage.remplirFiltreTypesAnomalies = function (tableAno) {
+    const select = CN.el.filtreTypeAnomalies;
+    if (!select || !tableAno) return;
+
+    const ancienneValeur = select.value || "tous";
+
+    const types = Array.from(
+      new Set(
+        (tableAno.lignes || [])
+          .map(r => (r["Type"] ?? "").toString().trim())
+          .filter(Boolean)
+      )
+    ).sort((a, b) => a.localeCompare(b, "fr", { sensitivity: "base" }));
+
+    select.innerHTML = "";
+
+    const optTous = document.createElement("option");
+    optTous.value = "tous";
+    optTous.textContent = "Tous les types";
+    select.appendChild(optTous);
+
+    for (const type of types) {
+      const opt = document.createElement("option");
+      opt.value = type;
+      opt.textContent = type;
+      select.appendChild(opt);
+    }
+
+    const valeurExiste = Array.from(select.options).some(opt => opt.value === ancienneValeur);
+    select.value = valeurExiste ? ancienneValeur : "tous";
+  };
+
+  /*
+     Filtrer le tableau "anomalies"
+     - recherche texte sur toutes les colonnes affichées
+     - filtre par type d'anomalie
+  */
+  CN.affichage.filtrerAnomalies = function (tableAno, options = {}) {
+    if (!tableAno) return;
+
+    if (options.resetPage) {
+      CN.affichage.resetPagination("anomalies");
+    }
+
+    const q = CN.data.nettoyerTexte(CN.el.rechercheAnomalies?.value || "");
+    const typeChoisi = (CN.el.filtreTypeAnomalies?.value || "tous").toString();
+
+    const entetes = tableAno.entetes || [];
+    const labels = tableAno.labels || null;
+
+    const lignes = (tableAno.lignes || []).filter((r) => {
+      const texteLigne = entetes
+        .map(h => r[h] ?? "")
+        .join(" ");
+
+      const txt = CN.data.nettoyerTexte(texteLigne);
+
+      const matchRecherche = !q || txt.includes(q);
+
+      const typeLigne = (r["Type"] ?? "").toString().trim();
+      const matchType = typeChoisi === "tous" || typeLigne === typeChoisi;
+
+      return matchRecherche && matchType;
+    });
+
+    CN.affichage.remplirTableHTMLPagination(
+      CN.el.tableAnomaliesHead,
+      CN.el.tableAnomaliesBody,
+      CN.el.paginationAnomalies,
+      "anomalies",
+      entetes,
+      lignes,
+      labels,
+      () => CN.affichage.filtrerAnomalies(tableAno)
     );
   };
 
@@ -339,28 +607,40 @@
     wrap.className = "ligne";
 
     const composantes = Array.isArray(stats?.composantes) ? stats.composantes : [];
+    const modeCoeff = (config?.modePonderation || "points") === "coefficients";
 
     const compResume = composantes.length
       ? composantes
-        .map(c => `${c.nom}=${formaterBaremeAffichage(c.poids)}`)
+        .map(c => {
+          if (modeCoeff) {
+            return `${c.nom}=coef ${formaterBaremeAffichage(c.coefficient)} → /${formaterBaremeAffichage(c.poids)}`;
+          }
+
+          return `${c.nom}=${formaterBaremeAffichage(c.poids)}`;
+        })
         .join(" ; ")
       : "Aucune";
 
     const detailsComposantes = composantes.length
       ? composantes.map(c => {
-          const infoBaremeSource =
-            c.typeCalcul === "note20" && Number.isFinite(CN.data.toNombreFR(c.baremeSource))
-              ? ` ; barème source /${formaterBaremeAffichage(c.baremeSource)}`
-              : "";
+        const infoBaremeSource =
+          c.typeCalcul === "note20" && Number.isFinite(CN.data.toNombreFR(c.baremeSource))
+            ? ` ; barème source /${formaterBaremeAffichage(c.baremeSource)}`
+            : "";
 
-          return `${c.nom} (/${formaterBaremeAffichage(c.poids)}${infoBaremeSource}) : ${c.nbValides} valides - invalides : ${c.nbInvalides} - fichiers : ${c.nbFichiers}<br/>`;
-        }).join("")
+        const infoPonderation = modeCoeff
+          ? `coef ${formaterBaremeAffichage(c.coefficient)} → /${formaterBaremeAffichage(c.poids)}`
+          : `/${formaterBaremeAffichage(c.poids)}`;
+
+        return `${c.nom} (${infoPonderation}${infoBaremeSource}) : ${c.nbValides} valides - invalides : ${c.nbInvalides} - fichiers : ${c.nbFichiers}<br/>`;
+      }).join("")
       : "Aucune composante active<br/>";
 
     wrap.innerHTML = `
     <div class="alerte info" style="flex:1">
       <b>Résumé</b><br/>
-      Composantes : <b>${compResume}</b> (sur /20)<br/>
+      Pondération : <b>${modeCoeff ? "Coefficients" : "Points sur /20"}</b><br/>
+      Composantes : <b>${compResume}</b> (note finale sur /20)<br/>
       Arrondi : <b>${config.arrondiActif === false ? "Désactivé (note brute)" : `${libelleMethodeArrondi(config.arrondiMethode)} ${libellePrecisionArrondi(config.arrondiPrecision)}`}</b><br/>
       ${stats.avecPegase ? `Mode PEGASE : <b>${libelleModeRemplissage(config.modeRemplissage)}</b><br/>` : ``}
       <br/>
@@ -372,6 +652,7 @@
       Anomalies : <b>${stats.nbAnomalies}</b>
     </div>
   `;
+
     return wrap;
   };
 })();

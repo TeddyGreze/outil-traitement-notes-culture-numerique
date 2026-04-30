@@ -537,6 +537,136 @@ body{
   margin: 10px 0 14px;
 }
 
+/*
+   Pagination des tableaux
+*/
+.table-pagination{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  flex-wrap:wrap;
+  margin-top:10px;
+  color:var(--text-muted);
+  font-size:12.5px;
+}
+
+.table-pagination-info{
+  font-weight:800;
+}
+
+.table-pagination-actions{
+  display:flex;
+  align-items:center;
+  gap:6px;
+  flex-wrap:wrap;
+}
+
+.table-page-btn{
+  min-width:34px;
+  height:32px;
+  padding:0 10px;
+  border:1px solid var(--border);
+  border-radius:999px;
+  background:#fff;
+  color:var(--text-muted);
+  font-size:12px;
+  font-weight:900;
+  cursor:pointer;
+  transition:var(--transition);
+}
+
+.table-page-btn:hover:not(:disabled){
+  background:#f8fafc;
+  border-color:var(--border-strong);
+  color:var(--text-main);
+}
+
+.table-page-btn.active{
+  background:#334155;
+  border-color:#334155;
+  color:#fff;
+}
+
+.table-page-btn:disabled{
+  opacity:.45;
+  cursor:not-allowed;
+}
+
+.table-page-ellipsis{
+  padding:0 4px;
+  font-weight:900;
+  color:var(--text-muted);
+}
+
+/*
+   Résultats : onglets des tableaux
+*/
+.result-tabs{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  flex-wrap:wrap;
+  margin: 16px 0 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.result-tab{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  gap:7px;
+  padding:8px 12px;
+  border:1px solid var(--border);
+  border-radius:999px;
+  background:#fff;
+  color:var(--text-muted);
+  font-size:12.5px;
+  font-weight:900;
+  cursor:pointer;
+  transition:var(--transition);
+}
+
+.result-tab:hover{
+  background:#f8fafc;
+  border-color:var(--border-strong);
+  color:var(--text-main);
+}
+
+.result-tab.active{
+  background:#334155;
+  border-color:#334155;
+  color:#fff;
+}
+
+.result-tab-count{
+  min-width:22px;
+  height:20px;
+  padding:0 6px;
+  border-radius:999px;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  background:#f1f5f9;
+  color:var(--text-muted);
+  font-size:11.5px;
+  font-weight:900;
+}
+
+.result-tab.active .result-tab-count{
+  background:rgba(255,255,255,.18);
+  color:#fff;
+}
+
+.result-tab-panel{
+  display:none;
+}
+
+.result-tab-panel.active{
+  display:block;
+}
+
 .sub-title{
   margin: 16px 0 10px;
   font-size: 14px;
@@ -1126,16 +1256,20 @@ body{
 }
 
 .free-classic-list {
-  margin-top: 10px;
+  margin-top: 0;
 }
 
 .free-classic-item {
-  padding: 14px 0;
-  border-top: 1px solid #dbe4f0;
+  padding: 12px 0;
+  border-top: 1px solid var(--border);
 }
 
 .free-classic-item:first-child {
   border-top: none;
+}
+
+#configLibreBox .points-summary {
+  margin-bottom: 12px;
 }
 
 .free-classic-main {
@@ -1186,6 +1320,56 @@ body{
   .free-classic-sub {
     padding-left: 0;
   }
+}
+
+/*
+   Méthode de pondération : points / coefficients
+*/
+.ponderation-box{
+  margin-bottom:14px;
+}
+
+.ponderation-box .form-select{
+  width:100%;
+  background:#fff;
+}
+
+/*
+   Presets de configuration
+*/
+.preset-box{
+  margin-top:14px;
+  margin-bottom:14px;
+  padding:0;
+  border:none;
+  border-radius:0;
+  background:transparent;
+}
+
+.preset-actions{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:8px;
+}
+
+.preset-actions .btn{
+  padding:10px 12px;
+  border-radius:12px;
+  font-size:13px;
+}
+
+@media (max-width: 640px){
+  .preset-actions{
+    grid-template-columns:1fr;
+  }
+}
+
+/*
+   Modal sauvegarde preset
+*/
+.preset-name-input{
+  width:100%;
+  flex:none;
 }
 
 /*

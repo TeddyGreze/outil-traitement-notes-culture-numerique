@@ -52,6 +52,16 @@
             </div>
           </div>
 
+          <!-- Choix de la méthode de pondération -->
+          <div class="ponderation-box">
+            <label class="config-label" for="modePonderation">Méthode de pondération</label>
+
+            <select id="modePonderation" class="form-select">
+              <option value="points" selected>Points sur /20</option>
+              <option value="coefficients">Coefficients</option>
+            </select>
+          </div>
+
           <!-- Bloc classique -->
           <div id="configClassiqueBox">
             <!-- Total /20 -->
@@ -89,6 +99,21 @@
               <button id="btnOpenParamCalculLibre" type="button" class="btn btn-outline w-100">
                 Paramètres avancés
               </button>
+            </div>
+          </div>
+
+          <!-- Presets de configuration -->
+          <div class="preset-box">
+            <div class="preset-actions">
+              <button id="btnSavePreset" type="button" class="btn btn-outline w-100">
+                Sauvegarder preset
+              </button>
+
+              <button id="btnLoadPreset" type="button" class="btn btn-outline w-100">
+                Charger preset
+              </button>
+
+              <input id="presetFileInput" class="input-file-hidden" type="file" accept=".json,application/json" />
             </div>
           </div>
 
@@ -160,32 +185,65 @@
         <button id="btnExportCalcul" class="btn btn-primary">Exporter CSV calcul</button>
       </div>
 
-      <!-- Tableau principal -->
-      <h3 class="sub-title">Tableau (aperçu)</h3>
-      <div class="table-tools">
-        <input id="recherche" class="input-text" type="search" placeholder="Rechercher (N° étudiant, nom, prénom)..." />
-        <select id="filtreAnomalies" class="form-select small">
-          <option value="tous" selected>Tout afficher</option>
-          <option value="avec">Avec anomalies</option>
-          <option value="sans">Sans anomalies</option>
-        </select>
+      <!-- Tableaux sous forme d'onglets -->
+      <div class="result-tabs" role="tablist" aria-label="Tableaux de résultats">
+        <button id="resultTabApercu" type="button" class="result-tab active" role="tab" aria-selected="true"
+          aria-controls="panelApercu" data-result-tab="apercu">
+          Aperçu des notes
+          <span id="countApercu" class="result-tab-count">0</span>
+        </button>
+
+        <button id="resultTabAnomalies" type="button" class="result-tab" role="tab" aria-selected="false"
+          aria-controls="panelAnomalies" data-result-tab="anomalies">
+          Anomalies
+          <span id="countAnomalies" class="result-tab-count">0</span>
+        </button>
       </div>
 
-      <div class="table-wrapper">
-        <table id="tableApercu" class="clean-table">
-          <thead></thead>
-          <tbody></tbody>
-        </table>
+      <!-- Onglet aperçu des notes -->
+      <div id="panelApercu" class="result-tab-panel active" role="tabpanel" aria-labelledby="resultTabApercu">
+        <div class="table-tools">
+          <input id="recherche" class="input-text" type="search"
+            placeholder="Rechercher (N° étudiant, nom, prénom)..." />
+
+          <select id="filtreAnomalies" class="form-select small">
+            <option value="tous" selected>Tout afficher</option>
+            <option value="avec">Avec anomalies</option>
+            <option value="sans">Sans anomalies</option>
+          </select>
+        </div>
+
+        <div class="table-wrapper">
+          <table id="tableApercu" class="clean-table">
+            <thead></thead>
+            <tbody></tbody>
+          </table>
+        </div>
       </div>
 
-      <!-- Tableau anomalies -->
-      <h3 class="sub-title">Anomalies (aperçu)</h3>
-      <div class="table-wrapper">
-        <table id="tableAnomalies" class="clean-table">
-          <thead></thead>
-          <tbody></tbody>
-        </table>
+      <div id="paginationApercu" class="table-pagination"></div>
+
+      <!-- Onglet anomalies -->
+      <div id="panelAnomalies" class="result-tab-panel" role="tabpanel" aria-labelledby="resultTabAnomalies">
+
+        <div class="table-tools">
+          <input id="rechercheAnomalies" class="input-text" type="search"
+            placeholder="Rechercher une anomalie (type, source, fichier, N° étudiant, nom, prénom, détail)..." />
+
+          <select id="filtreTypeAnomalies" class="form-select small">
+            <option value="tous" selected>Tous les types</option>
+          </select>
+        </div>
+
+        <div class="table-wrapper">
+          <table id="tableAnomalies" class="clean-table">
+            <thead></thead>
+            <tbody></tbody>
+          </table>
+        </div>
       </div>
+
+      <div id="paginationAnomalies" class="table-pagination"></div>
     </section>
 
   </div>
@@ -288,6 +346,33 @@
       <div class="ligne boutons" style="justify-content:flex-end">
         <button id="btnSettingsCancel" type="button" class="btn btn-outline">Annuler</button>
         <button id="btnSettingsSave" type="button" class="btn btn-primary">Enregistrer</button>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Modal Nom du preset -->
+  <div id="presetNameOverlay" class="modal-overlay bloc-cache" role="dialog" aria-modal="true">
+    <div class="modal modal-sm" role="document">
+
+      <div class="modal-entete">
+        <div class="modal-titre">Sauvegarder un preset</div>
+        <button id="btnPresetNameClose" type="button" class="btn-icone" title="Fermer">✕</button>
+      </div>
+
+      <div class="texte-gris" style="margin:0 0 14px 0;">
+        Choisissez un nom pour le preset. Si le champ est vide, l’application utilisera un nom automatique.
+      </div>
+
+      <label class="champ">
+        <span class="champ-titre">Nom du preset</span>
+        <input id="presetNameInput" class="input-text preset-name-input" type="text"
+          placeholder="Exemple : Session 1 PIX Présences" />
+      </label>
+
+      <div class="ligne boutons" style="justify-content:flex-end">
+        <button id="btnPresetNameCancel" type="button" class="btn btn-outline">Annuler</button>
+        <button id="btnPresetNameSave" type="button" class="btn btn-primary">Sauvegarder</button>
       </div>
 
     </div>

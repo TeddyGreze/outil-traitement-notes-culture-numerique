@@ -24,7 +24,7 @@
 
     if (!Number.isFinite(n) || n <= 0) return defaut;
     return n;
-  };  
+  };
 
   CN.utils.creerMappingVidePourType = function (typeCalcul) {
     const type = (typeCalcul || "").toString().trim().toLowerCase();
@@ -80,6 +80,7 @@
       nom: `Composante ${index}`,
       actif: true,
       poids: 0,
+      coefficient: 1,
       typeCalcul: "note20",
       baremeSource: 20,
       multiFichiers: false,
@@ -108,6 +109,7 @@
         nom: "PIX",
         actif: true,
         poids: 15,
+        coefficient: 3,
         typeCalcul: "pix",
         baremeSource: null,
         multiFichiers: false,
@@ -120,6 +122,7 @@
         nom: "Présences",
         actif: true,
         poids: 5,
+        coefficient: 1,
         typeCalcul: "presence",
         baremeSource: null,
         multiFichiers: true,
@@ -132,6 +135,7 @@
         nom: "Recherche documentaire",
         actif: false,
         poids: 0,
+        coefficient: 1,
         typeCalcul: "note20",
         baremeSource: 20,
         multiFichiers: false,
@@ -189,6 +193,20 @@
     // Paramétrage
     sumPoints: document.getElementById("sumPoints"),
     configError: document.getElementById("configError"),
+    modePonderation: document.getElementById("modePonderation"),
+    ponderationHelp: document.getElementById("ponderationHelp"),
+
+    // Presets de configuration
+    btnSavePreset: document.getElementById("btnSavePreset"),
+    btnLoadPreset: document.getElementById("btnLoadPreset"),
+    presetFileInput: document.getElementById("presetFileInput"),
+
+    // Modal nom du preset
+    presetNameOverlay: document.getElementById("presetNameOverlay"),
+    presetNameInput: document.getElementById("presetNameInput"),
+    btnPresetNameClose: document.getElementById("btnPresetNameClose"),
+    btnPresetNameCancel: document.getElementById("btnPresetNameCancel"),
+    btnPresetNameSave: document.getElementById("btnPresetNameSave"),
 
     // Avertissement navigateur
     safariWarning: document.getElementById("safariWarning"),
@@ -222,8 +240,19 @@
     zoneResultats: document.getElementById("zoneResultats"),
     resume: document.getElementById("resume"),
 
+    // Onglets des tableaux de résultats
+    resultTabApercu: document.getElementById("resultTabApercu"),
+    resultTabAnomalies: document.getElementById("resultTabAnomalies"),
+    panelApercu: document.getElementById("panelApercu"),
+    panelAnomalies: document.getElementById("panelAnomalies"),
+    countApercu: document.getElementById("countApercu"),
+    countAnomalies: document.getElementById("countAnomalies"),
+
     recherche: document.getElementById("recherche"),
     filtreAnomalies: document.getElementById("filtreAnomalies"),
+
+    rechercheAnomalies: document.getElementById("rechercheAnomalies"),
+    filtreTypeAnomalies: document.getElementById("filtreTypeAnomalies"),
 
     // Tableaux (aperçu + anomalies)
     tableApercuHead: document.querySelector("#tableApercu thead"),
@@ -232,10 +261,14 @@
     tableAnomaliesHead: document.querySelector("#tableAnomalies thead"),
     tableAnomaliesBody: document.querySelector("#tableAnomalies tbody"),
 
+    paginationApercu: document.getElementById("paginationApercu"),
+    paginationAnomalies: document.getElementById("paginationAnomalies"),
+
     // Exports
     btnExportPegase: document.getElementById("btnExportPegase"),
     btnExportAnomalies: document.getElementById("btnExportAnomalies"),
     btnExportCalcul: document.getElementById("btnExportCalcul"),
+    btnExportDetailCalcul: document.getElementById("btnExportDetailCalcul"),
 
     // Modal mapping (choix des colonnes)
     modalOverlay: document.getElementById("modalOverlay"),
@@ -296,6 +329,10 @@
       arrondiActif: true,
       arrondiMethode: "classique",
       arrondiPrecision: "centieme",
+
+      // points = l’utilisateur saisit directement une répartition sur /20
+      // coefficients = l’utilisateur saisit des coefficients, puis l’application calcule la répartition sur /20
+      modePonderation: "points",
     },
 
     // Données importées
@@ -313,8 +350,14 @@
     anomalies: null,
     anomaliesParId: null,
     apercu: null,
+    tableAnomaliesData: null,
     modeSansPegase: false,
     analyseDejaLancee: false,
+
+    pagination: {
+      apercu: { page: 1, parPage: 50 },
+      anomalies: { page: 1, parPage: 50 }
+    },
 
     // Mode libre
     composantesLibres: null,
@@ -329,7 +372,7 @@
   CN.meta = {
     prenom: "Teddy",
     nom: "GREZE",
-    version: "1.2.0"
+    version: "1.3.0"
   };
 
   CN.ui = CN.ui || {};

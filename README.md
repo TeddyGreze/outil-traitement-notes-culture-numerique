@@ -22,10 +22,13 @@ L’application permet notamment de :
 - importer plusieurs fichiers CSV
 - détecter automatiquement certaines colonnes utiles
 - ajuster manuellement les colonnes si nécessaire
-- configurer les composantes et leurs pondérations
+- configurer les composantes d’évaluation
+- choisir une pondération par points ou par coefficients
 - calculer une note finale sur 20
 - remplir automatiquement un fichier PEGASE
 - signaler les anomalies détectées
+- consulter les résultats dans des tableaux paginés
+- sauvegarder et recharger une configuration avec un preset JSON
 - exporter les résultats en CSV
 
 ---
@@ -47,8 +50,11 @@ Le mode classique repose sur des composantes prédéfinies :
 L’utilisateur peut :
 
 - activer ou désactiver les composantes
-- modifier leurs pondérations
-- conserver une somme totale égale à **20**
+- modifier leur pondération
+- choisir une pondération par points ou par coefficients
+- garder un calcul final ramené sur **20**
+
+Les composantes classiques sont adaptées au fonctionnement habituel de l’UE Culture Numérique.
 
 #### Mode libre
 
@@ -63,9 +69,84 @@ Pour chaque composante, l’utilisateur peut :
 - définir le **barème source** de la note lue dans le fichier
 - supprimer la composante si nécessaire
 
+Ce mode permet de traiter des structures d’évaluation plus souples, lorsque les composantes ne correspondent pas exactement au mode classique.
+
 ---
 
-### Import des fichiers CSV
+## Méthode de pondération
+
+L’application propose deux méthodes de pondération.
+
+### Points sur /20
+
+Dans ce mode, l’utilisateur indique directement le nombre de points attribués à chaque composante.
+
+Exemple :
+
+```text
+PIX : 15 points
+Présences : 5 points
+```
+
+La somme des composantes actives doit être égale à **20**.
+
+### Coefficients
+
+Dans ce mode, l’utilisateur indique des coefficients.
+
+L’application calcule automatiquement la répartition correspondante sur **20**.
+
+Exemple :
+
+```text
+PIX : coefficient 3
+Présences : coefficient 1
+```
+
+Ce qui correspond à :
+
+```text
+PIX : 15 points
+Présences : 5 points
+```
+
+Ce mode permet de raisonner avec des coefficients tout en conservant une note finale sur 20.
+
+---
+
+## Presets de configuration
+
+L’application permet de sauvegarder et de recharger des presets au format **JSON**.
+
+### Sauvegarder un preset
+
+Le bouton **Sauvegarder preset** permet d’exporter la configuration actuelle dans un fichier `.json`.
+
+Le preset contient notamment :
+
+- le mode choisi : classique ou libre
+- la méthode de pondération : points ou coefficients
+- les composantes actives
+- les points ou coefficients
+- les barèmes sources
+- les options multi-fichiers
+- les mappings de colonnes
+- les paramètres avancés
+- le mapping PEGASE
+
+L’utilisateur peut choisir un nom pour le preset. Si aucun nom n’est indiqué, l’application génère un nom automatique avec un horodatage.
+
+### Charger un preset
+
+Le bouton **Charger preset** permet de réimporter un fichier JSON précédemment sauvegardé.
+
+Le chargement d’un preset restaure la configuration de l’application.
+
+Un preset ne contient pas les fichiers CSV importés. Après le chargement d’un preset, les fichiers CSV nécessaires doivent donc être réimportés.
+
+---
+
+## Import des fichiers CSV
 
 L’application accepte l’import de fichiers CSV par :
 
@@ -80,14 +161,21 @@ Les imports possibles sont les suivants :
 - **Recherche documentaire**
 - **composantes libres personnalisées**
 
-Selon le mode choisi, certaines composantes peuvent accepter :
+Selon le mode choisi et les réglages de la composante, l’import peut accepter :
 
 - **un seul fichier**
 - **plusieurs fichiers**
 
+Chaque carte d’import affiche son état :
+
+- **En attente**
+- **Importé**
+
+Il est aussi possible de vider une carte d’import.
+
 ---
 
-### Détection et paramétrage des colonnes
+## Détection et paramétrage des colonnes
 
 L’application essaie automatiquement de reconnaître les colonnes utiles dans les fichiers importés.
 
@@ -100,72 +188,176 @@ Si nécessaire, l’utilisateur peut ouvrir une fenêtre de paramétrage pour ch
 - colonnes spécifiques PIX
 - colonne de note PEGASE à remplir
 
+Pour les composantes multi-fichiers, le paramétrage peut être fait fichier par fichier.
+
 ---
 
-### Calcul des notes
+## Calcul des notes
 
 Le calcul est réalisé automatiquement à partir des composantes actives.
 
-#### Règles générales
+### Règles générales
 
 - la note finale est calculée sur **20**
 - chaque composante contribue selon sa pondération
 - si une composante active n’a pas de fichier importé, sa contribution est considérée comme **0**
+- les notes peuvent être arrondies selon les paramètres choisis
 
-#### Types de calcul gérés
+### Types de calcul gérés
 
-- **PIX** : score entre **0 et 1**, converti selon la pondération de la composante
-- **Présences** : score sur **5**, converti selon la pondération de la composante
-- **Composante notée** : note sur un **barème source configurable**, convertie selon la pondération de la composante
+#### PIX
 
-#### Cas particuliers
+Le score PIX est un score compris entre **0 et 1**.
 
-- pour **PIX**, seules les lignes valides sont retenues selon les conditions prévues
-- si plusieurs lignes existent pour un même étudiant, le meilleur résultat utile peut être conservé selon la logique de la composante
-- en mode libre, une composante notée peut aussi être traitée à partir de **plusieurs fichiers**
+La contribution est calculée ainsi :
+
+```text
+score PIX × pondération de la composante
+```
+
+Exemple :
+
+```text
+0,80 × 15 = 12
+```
+
+#### Présences
+
+Le score de présence est traité sur **5**.
+
+La contribution est calculée ainsi :
+
+```text
+(score / 5) × pondération de la composante
+```
+
+Exemple :
+
+```text
+(4 / 5) × 5 = 4
+```
+
+#### Composante notée
+
+Une composante notée peut avoir un barème source configurable.
+
+La contribution est calculée ainsi :
+
+```text
+(note source / barème source) × pondération de la composante
+```
+
+Exemple avec une note sur 20 :
+
+```text
+(16 / 20) × 10 = 8
+```
+
+Exemple avec une note sur 50 :
+
+```text
+(40 / 50) × 10 = 8
+```
 
 ---
 
-### Paramètres avancés
+## Paramètres avancés
 
-L’application propose un panneau de paramètres avancés permettant de configurer :
+L’application propose un panneau de paramètres avancés permettant de configurer le remplissage PEGASE et l’arrondi des notes.
 
-#### Mode de remplissage PEGASE
+### Mode de remplissage PEGASE
+
+Les modes disponibles sont :
 
 - **Ne rien écraser**
 - **Écraser systématiquement**
 - **Remplacer seulement si la nouvelle note est supérieure**
 - **Remplacer seulement si l’ancienne note est inférieure à 10 et la nouvelle supérieure à 10**
 
-#### Arrondi
+### Arrondi
+
+L’utilisateur peut :
 
 - activer ou désactiver l’arrondi
-- choisir la méthode :
-  - arrondi classique
-  - arrondi au supérieur
-  - arrondi à l’inférieur
-- choisir la précision :
-  - au centième
-  - au dixième
-  - à l’entier
+- choisir la méthode d’arrondi
+- choisir la précision
+
+Méthodes disponibles :
+
+- arrondi classique
+- arrondi au supérieur
+- arrondi à l’inférieur
+
+Précisions disponibles :
+
+- au centième
+- au dixième
+- à l’entier
+
+Un aperçu est affiché dans la fenêtre des paramètres avancés pour montrer le résultat de l’arrondi.
 
 ---
 
-### Analyse et affichage des résultats
+## Analyse et affichage des résultats
 
 Après analyse, l’application affiche :
 
 - un **résumé** de l’analyse
-- un **tableau principal** des résultats
-- un **tableau des anomalies**
+- un onglet **Aperçu des notes**
+- un onglet **Anomalies**
 
-Le tableau principal propose :
+Chaque onglet affiche un compteur de lignes.
+
+### Onglet Aperçu des notes
+
+Cet onglet affiche les notes calculées pour les étudiants.
+
+Il contient notamment :
+
+- le numéro étudiant
+- le nom
+- le prénom
+- les contributions des composantes actives
+- la note finale sur 20
+- le statut de l’étudiant, par exemple **PEGASE** ou **Hors PEGASE**
+
+Le tableau propose :
 
 - une recherche par numéro étudiant, nom ou prénom
 - un filtre :
   - tout afficher
   - avec anomalies
   - sans anomalies
+- une pagination automatique
+
+### Onglet Anomalies
+
+Cet onglet affiche les anomalies détectées pendant l’analyse.
+
+Le tableau propose :
+
+- une recherche dans les anomalies
+- un filtre par type d’anomalie
+- une pagination automatique
+
+Les colonnes affichées peuvent contenir :
+
+- type d’anomalie
+- source
+- fichier concerné
+- numéro étudiant trouvé
+- nom
+- prénom
+- suggestion de numéro étudiant
+- détail de l’anomalie
+
+La colonne de suggestion est affichée seulement lorsqu’une suggestion existe.
+
+### Pagination
+
+Les tableaux sont paginés afin de rester lisibles même avec beaucoup d’étudiants.
+
+Par défaut, l’application affiche **50 lignes par page**.
 
 ---
 
@@ -179,6 +371,7 @@ Si un fichier PEGASE est importé, l’application peut :
 - identifier la colonne de note à remplir
 - générer un export **PEGASE rempli**
 - comparer les étudiants calculés avec ceux présents dans PEGASE
+- repérer les étudiants absents du fichier PEGASE
 
 ### Sans PEGASE
 
@@ -189,6 +382,7 @@ Dans ce cas :
 - le calcul des notes est quand même effectué
 - les tableaux de résultats restent disponibles
 - le fichier **PEGASE rempli** n’est pas généré
+- certaines anomalies liées au fichier PEGASE ne peuvent pas être produites
 
 ---
 
@@ -198,6 +392,8 @@ Dans ce cas :
 
 Permet d’obtenir le fichier PEGASE avec la colonne de note complétée automatiquement, selon les règles de remplissage choisies.
 
+Cet export est disponible uniquement si un fichier PEGASE a été importé.
+
 ### CSV anomalies
 
 Permet d’exporter :
@@ -205,9 +401,35 @@ Permet d’exporter :
 - toutes les anomalies
 - ou uniquement un type précis d’anomalie
 
-### CSV calcul
+Le fichier exporté contient les colonnes utiles selon les anomalies présentes.
 
-Permet d’exporter les notes calculées par étudiant, avec le détail des composantes actives et la note finale.
+### CSV calcul simple
+
+Permet d’exporter les notes calculées par étudiant.
+
+Ce fichier contient :
+
+- numéro étudiant
+- nom
+- prénom
+- contribution de chaque composante active
+- note finale sur 20
+
+### CSV calcul détaillé avec formules
+
+Permet d’exporter un détail du calcul des notes.
+
+Ce fichier explique comment chaque contribution est obtenue.
+
+Exemples de formules exportées :
+
+```text
+0,8 × 15 = 12
+(4 / 5) × 5 = 4
+(16 / 20) × 10 = 8
+```
+
+Cet export permet de vérifier les calculs, d’expliquer les résultats et de conserver une trace plus transparente de la méthode utilisée.
 
 ---
 
@@ -224,6 +446,23 @@ Dans certains cas, une **suggestion de numéro étudiant** peut être proposée 
 
 ---
 
+## Horodatage des exports
+
+Les fichiers exportés utilisent un nom horodaté.
+
+Exemples :
+
+```text
+PEGASE_rempli_2026-04-30_14h25.csv
+anomalies_2026-04-30_14h25.csv
+calcul_notes_2026-04-30_14h25.csv
+detail_calcul_notes_2026-04-30_14h25.csv
+```
+
+Cela permet d’éviter d’écraser les anciens exports et de garder une trace des traitements réalisés.
+
+---
+
 ## Technologies utilisées
 
 Ce projet a été réalisé avec les technologies web suivantes :
@@ -232,7 +471,14 @@ Ce projet a été réalisé avec les technologies web suivantes :
 - **CSS**
 - **JavaScript**
 
-L’application ne nécessite ni framework externe, ni serveur backend.
+L’application ne nécessite :
+
+- aucun framework externe
+- aucun serveur backend
+- aucune base de données
+- aucune connexion Internet
+
+Tout le traitement se fait localement dans le navigateur.
 
 ---
 
@@ -249,33 +495,53 @@ Sélectionner :
 - **Mode classique**
 - ou **Mode libre**
 
-### 3. Paramétrer les composantes
+### 3. Choisir la méthode de pondération
 
-Définir les composantes actives et leurs pondérations.
+Sélectionner :
 
-### 4. Importer les fichiers
+- **Points sur /20**
+- ou **Coefficients**
+
+### 4. Paramétrer les composantes
+
+Définir :
+
+- les composantes actives
+- leurs points ou coefficients
+- les options des composantes en mode libre si nécessaire
+
+### 5. Importer les fichiers
 
 Importer les fichiers CSV nécessaires selon les composantes choisies.
 
-### 5. Vérifier le paramétrage
+### 6. Vérifier le paramétrage
 
 Si besoin, ajuster manuellement les colonnes reconnues par l’application.
 
-### 6. Lancer l’analyse
+### 7. Lancer l’analyse
 
 Cliquer sur le bouton **Analyser**.
 
-### 7. Consulter les résultats
+### 8. Consulter les résultats
 
 Lire :
 
 - le résumé
-- le tableau principal
-- le tableau des anomalies
+- l’onglet Aperçu des notes
+- l’onglet Anomalies
 
-### 8. Exporter les fichiers
+### 9. Exporter les fichiers
 
-Exporter ensuite les fichiers générés selon le besoin.
+Exporter les fichiers générés selon le besoin :
+
+- PEGASE rempli
+- anomalies
+- calcul simple
+- calcul détaillé avec formules
+
+### 10. Sauvegarder un preset
+
+Sauvegarder la configuration dans un fichier JSON si elle doit être réutilisée plus tard.
 
 ---
 
@@ -303,4 +569,4 @@ Projet réalisé par **Teddy GREZE**.
 
 ## Version
 
-Version actuelle : **1.2.0**
+Version actuelle : **1.3.0**

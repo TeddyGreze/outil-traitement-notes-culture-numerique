@@ -16,6 +16,7 @@
   CN.app.dropzones = CN.app.dropzones || {};
   CN.app.pipeline = CN.app.pipeline || {};
   CN.app.exports = CN.app.exports || {};
+  CN.app.presets = CN.app.presets || {};
   CN.app.main = CN.app.main || {};
 
   // Sécurise les stockages supplémentaires utilisés par ce fichier
@@ -94,6 +95,199 @@
     return aPegase || aClassique || aLibre;
   };
 
+  // Pondération : points / coefficients
+
+  CN.app.config.normaliserModePonderation = function (mode) {
+    return mode === "coefficients" ? "coefficients" : "points";
+  };
+
+  CN.app.config.syncModePonderationDepuisUI = function () {
+    const mode = CN.app.config.normaliserModePonderation(
+      CN.el.modePonderation?.value || CN.etat.config?.modePonderation || "points"
+    );
+
+    CN.etat.config.modePonderation = mode;
+
+    if (CN.el.modePonderation) {
+      CN.el.modePonderation.value = mode;
+    }
+
+    return mode;
+  };
+
+  CN.app.config.estModeCoefficients = function () {
+    return CN.app.config.normaliserModePonderation(
+      CN.etat.config?.modePonderation || "points"
+    ) === "coefficients";
+  };
+
+  CN.app.config.majAffichagePonderation = function () {
+    const mode = CN.app.config.normaliserModePonderation(
+      CN.etat.config?.modePonderation || "points"
+    );
+
+    const modeCoeff = mode === "coefficients";
+
+    if (CN.el.modePonderation) {
+      CN.el.modePonderation.value = mode;
+    }
+
+    document.querySelectorAll(".pts-max").forEach(node => {
+      node.textContent = modeCoeff ? "coef." : "/20";
+    });
+
+    if (CN.el.ponderationHelp) {
+      CN.el.ponderationHelp.textContent = modeCoeff
+        ? "Les valeurs saisies sont des coefficients. L’application calcule automatiquement la répartition sur /20."
+        : "Les valeurs saisies correspondent directement aux points attribués sur /20.";
+    }
+  };
+
+  CN.app.config.ensurePonderationComposantes = function (composantes) {
+    const comps = Array.isArray(composantes) ? composantes : [];
+
+    for (const comp of comps) {
+      if (!comp) continue;
+
+      const coef = CN.data.toNombreFR(comp.coefficient);
+      const poids = CN.data.toNombreFR(comp.poids);
+
+      if (!Number.isFinite(coef) || coef <= 0) {
+        comp.coefficient = Number.isFinite(poids) && poids > 0 ? poids : 1;
+      }
+
+      if (!Number.isFinite(poids)) {
+        comp.poids = 0;
+      }
+    }
+  };
+
+  CN.app.config.formaterValeurSaisiePonderation = function (comp) {
+    const modeCoeff = CN.app.config.estModeCoefficients();
+    const valeur = modeCoeff ? comp?.coefficient : comp?.poids;
+    const n = CN.data.toNombreFR(valeur);
+
+    if (!Number.isFinite(n)) return "0";
+
+    return String(n);
+  };
+
+  CN.app.config.setValeurSaisiePonderation = function (comp, valeur) {
+    if (!comp) return;
+
+    const n = CN.data.toNombreFR(valeur);
+    const v = Number.isFinite(n) ? n : 0;
+
+    if (CN.app.config.estModeCoefficients()) {
+      comp.coefficient = v;
+    } else {
+      comp.poids = v;
+    }
+  };
+
+  CN.app.config.calculerPonderationEffective = function (composantes) {
+    const comps = Array.isArray(composantes) ? composantes.filter(Boolean) : [];
+    const modeCoeff = CN.app.config.estModeCoefficients();
+
+    CN.app.config.ensurePonderationComposantes(comps);
+
+    for (const comp of comps) {
+      if (!comp.actif) {
+        comp.poids = 0;
+      }
+    }
+
+    const actives = comps.filter(c => c && c.actif);
+    const erreurs = [];
+
+    if (actives.length === 0) {
+      erreurs.push("Vous devez sélectionner au moins une composante.");
+      return { actives, totalAffiche: 0, erreurs };
+    }
+
+    // Mode coefficients : on calcule automatiquement les points sur /20
+    if (modeCoeff) {
+      let sommeCoef = 0;
+
+      for (const comp of actives) {
+        let coef = CN.data.toNombreFR(comp.coefficient);
+
+        if (!Number.isFinite(coef) || coef <= 0) {
+          coef = 0.5;
+        }
+
+        comp.coefficient = coef;
+        sommeCoef += coef;
+      }
+
+      if (actives.length === 1) {
+        actives[0].poids = 20;
+      } else if (sommeCoef > 0) {
+        for (const comp of actives) {
+          comp.poids = (comp.coefficient / sommeCoef) * 20;
+        }
+      }
+
+      return { actives, totalAffiche: sommeCoef, erreurs };
+    }
+
+    // Mode points : la somme doit faire 20
+    if (actives.length === 1) {
+      actives[0].poids = 20;
+    } else {
+      for (const comp of actives) {
+        let v = CN.data.toNombreFR(comp.poids);
+
+        if (!Number.isFinite(v)) v = 0;
+        if (v <= 0) v = 0.5;
+
+        comp.poids = v;
+      }
+    }
+
+    const somme = CN.data.arrondi2(
+      actives.reduce((acc, c) => acc + (Number.isFinite(c.poids) ? c.poids : 0), 0)
+    );
+
+    if (actives.length >= 2) {
+      const bad = actives.some(c => !Number.isFinite(c.poids) || c.poids <= 0);
+      if (bad) {
+        erreurs.push("Lorsque plusieurs composantes sont actives, chacune doit avoir une pondération > 0.");
+      }
+    }
+
+    if (actives.length !== 1 && Math.abs(somme - 20) > 1e-9) {
+      erreurs.push("La somme des points doit être égale à 20.");
+    }
+
+    return { actives, totalAffiche: somme, erreurs };
+  };
+
+  CN.app.config.afficherTotalPonderation = function (total, hasErreur) {
+    const n = Number.isFinite(total) ? total : 0;
+    const texte = n.toFixed(2).replace(".", ",");
+
+    if (CN.el.sumPoints) {
+      CN.el.sumPoints.textContent = texte;
+    }
+
+    if (CN.el.sumPointsLibreMirror) {
+      CN.el.sumPointsLibreMirror.textContent = texte;
+    }
+
+    const totalBox = document.getElementById("totalPointsDisplay");
+    if (totalBox) {
+      totalBox.classList.toggle("bad-total", !!hasErreur);
+    }
+
+    const totalBoxLibre = document.getElementById("totalPointsDisplayLibre");
+    if (totalBoxLibre) {
+      totalBoxLibre.classList.toggle("bad-total", !!hasErreur);
+    }
+
+    CN.app.config.majAffichagePonderation();
+  };
+
   // Mode classique dynamique
 
   CN.app.config.ensureModeClassiqueDynamicUI = function () {
@@ -158,41 +352,49 @@
 
     const comps = Array.isArray(CN.etat.composantes) ? CN.etat.composantes : [];
     const nbActives = comps.filter(c => c && c.actif).length;
+    const modeCoeff = CN.app.config.estModeCoefficients();
 
     CN.el.classicComposantesList.innerHTML = comps.map((comp) => {
       const nom = CN.app.util.escapeHTML(comp?.nom || comp?.id || "Composante");
-      const poids = Number.isFinite(comp?.poids) ? String(comp.poids) : "0";
+      const valeur = CN.app.config.formaterValeurSaisiePonderation(comp);
       const checked = comp?.actif ? "checked" : "";
       const disabledPoids = (!comp?.actif || (nbActives === 1 && comp?.actif)) ? "disabled" : "";
 
-      return `
-        <div class="config-item">
-          <label class="checkbox-label" for="use_classique_${comp.id}">
-            <input
-              id="use_classique_${comp.id}"
-              type="checkbox"
-              data-role="classic-active"
-              data-comp-id="${comp.id}"
-              ${checked}
-            />
-            <span class="custom-checkbox"></span>
-            <span>${nom}</span>
-          </label>
+      const min = modeCoeff ? "0.01" : "0";
+      const max = modeCoeff ? "" : `max="20"`;
+      const title = modeCoeff
+        ? "Coefficient de la composante"
+        : "Nombre de points attribués à la composante sur /20";
 
+      return `
+      <div class="config-item">
+        <label class="checkbox-label" for="use_classique_${comp.id}">
           <input
-            id="pts_classique_${comp.id}"
-            class="input-number"
-            type="number"
-            min="0"
-            max="20"
-            step="0.5"
-            value="${poids}"
-            data-role="classic-weight"
+            id="use_classique_${comp.id}"
+            type="checkbox"
+            data-role="classic-active"
             data-comp-id="${comp.id}"
-            ${disabledPoids}
+            ${checked}
           />
-        </div>
-      `;
+          <span class="custom-checkbox"></span>
+          <span>${nom}</span>
+        </label>
+
+        <input
+          id="pts_classique_${comp.id}"
+          class="input-number"
+          type="number"
+          min="${min}"
+          ${max}
+          step="0.5"
+          value="${valeur}"
+          title="${title}"
+          data-role="classic-weight"
+          data-comp-id="${comp.id}"
+          ${disabledPoids}
+        />
+      </div>
+    `;
     }).join("");
   };
 
@@ -301,6 +503,8 @@
     CN.ui.afficherBloc(CN.el.configLibreBox, modeLibre);
     CN.ui.afficherBloc(CN.el.importsGrid, !modeLibre);
     CN.ui.afficherBloc(CN.el.importsFreeGrid, modeLibre);
+
+    CN.app.config.majAffichagePonderation();
   };
 
   CN.app.config.ajouterComposanteLibre = function () {
@@ -346,7 +550,13 @@
     <div class="free-classic-list">
       ${comps.map((comp) => {
       const nom = CN.app.util.escapeHTML(comp?.nom || "");
-      const poids = Number.isFinite(comp?.poids) ? String(comp.poids) : "0";
+      const poids = CN.app.config.formaterValeurSaisiePonderation(comp);
+      const modeCoeff = CN.app.config.estModeCoefficients();
+      const minPonderation = modeCoeff ? "0.01" : "0";
+      const maxPonderation = modeCoeff ? "" : `max="20"`;
+      const titlePonderation = modeCoeff
+        ? "Coefficient de la composante"
+        : "Nombre de points attribués à la composante sur /20";
 
       return `
         <div class="free-classic-item" data-comp-id="${comp.id}">
@@ -374,13 +584,14 @@
 
             <input
               type="number"
-              min="0"
-              max="20"
+              min="${minPonderation}"
+              ${maxPonderation}
               step="0.5"
               class="input-number free-classic-weight"
               data-action="change-poids"
               data-comp-id="${comp.id}"
               value="${poids}"
+              title="${titlePonderation}"
               ${(nbActives === 1 && comp.actif) ? "disabled" : ""}
             />
 
@@ -429,12 +640,13 @@
         const comp = CN.utils.getComposanteById(node.dataset.compId);
         if (!comp) return;
 
-        let poids = Number.isFinite(node.valueAsNumber)
+        let valeur = Number.isFinite(node.valueAsNumber)
           ? node.valueAsNumber
           : CN.data.toNombreFR(node.value);
 
-        if (!Number.isFinite(poids)) poids = 0;
-        comp.poids = poids;
+        if (!Number.isFinite(valeur)) valeur = 0;
+
+        CN.app.config.setValeurSaisiePonderation(comp, valeur);
 
         CN.app.config.appliquerReglesConfig();
       };
@@ -499,6 +711,7 @@
     CN.etat.anomalies = null;
     CN.etat.anomaliesParId = null;
     CN.etat.apercu = null;
+    CN.etat.tableAnomaliesData = null;
     CN.etat.modeSansPegase = false;
 
     if (CN.el.resume) CN.el.resume.innerHTML = "";
@@ -507,11 +720,22 @@
     if (CN.el.tableAnomaliesHead) CN.el.tableAnomaliesHead.innerHTML = "";
     if (CN.el.tableAnomaliesBody) CN.el.tableAnomaliesBody.innerHTML = "";
 
+    // Réinitialise aussi les zones de pagination des tableaux
+    if (CN.el.paginationApercu) CN.el.paginationApercu.innerHTML = "";
+    if (CN.el.paginationAnomalies) CN.el.paginationAnomalies.innerHTML = "";
+
+    // Remet les tableaux paginés à la page 1
+    if (CN.etat.pagination) {
+      CN.etat.pagination.apercu = { page: 1, parPage: 50 };
+      CN.etat.pagination.anomalies = { page: 1, parPage: 50 };
+    }
+
     CN.ui.afficherBloc(CN.el.zoneResultats, false);
     CN.ui.afficherBloc(CN.el.btnExportPegase, true);
     CN.el.btnExportPegase.disabled = true;
     CN.el.btnExportAnomalies.disabled = true;
     CN.el.btnExportCalcul.disabled = true;
+    if (CN.el.btnExportDetailCalcul) CN.el.btnExportDetailCalcul.disabled = true;
   };
 
   CN.app.dropzones.viderImportPegase = function () {
@@ -1658,7 +1882,10 @@
       modeRemplissage: (CN.etat.config?.modeRemplissage || "ne_rien_ecraser").toString(),
       arrondiActif: CN.etat.config?.arrondiActif !== false,
       arrondiMethode: (CN.etat.config?.arrondiMethode || "classique").toString(),
-      arrondiPrecision: (CN.etat.config?.arrondiPrecision || "centieme").toString()
+      arrondiPrecision: (CN.etat.config?.arrondiPrecision || "centieme").toString(),
+      modePonderation: CN.app.config.normaliserModePonderation(
+        CN.el.modePonderation?.value || CN.etat.config?.modePonderation || "points"
+      )
     };
   };
 
@@ -1688,12 +1915,13 @@
       }
 
       if (input) {
-        let poids = Number.isFinite(input.valueAsNumber)
+        let valeur = Number.isFinite(input.valueAsNumber)
           ? input.valueAsNumber
           : CN.data.toNombreFR(input.value);
 
-        if (!Number.isFinite(poids)) poids = 0;
-        comp.poids = poids;
+        if (!Number.isFinite(valeur)) valeur = 0;
+
+        CN.app.config.setValeurSaisiePonderation(comp, valeur);
       }
 
       if (!comp.actif) {
@@ -1707,6 +1935,8 @@
   // - si 1 composante => elle prend 20
   // - si plusieurs => chaque pondération > 0
   CN.app.config.appliquerReglesConfig = function () {
+    CN.app.config.syncModePonderationDepuisUI();
+
     const modeLibre = CN.utils.estModeLibre();
     CN.app.config.majAffichageModeSaisie();
 
@@ -1717,55 +1947,15 @@
       let comps = Array.isArray(CN.etat.composantes) ? CN.etat.composantes.filter(Boolean) : [];
       CN.etat.composantes = comps;
 
-      let actives = comps.filter(c => c && c.actif);
+      const res = CN.app.config.calculerPonderationEffective(comps);
 
-      if (actives.length === 1) {
-        actives[0].poids = 20;
-      } else {
-        for (const comp of actives) {
-          let v = CN.data.toNombreFR(comp.poids);
-          if (!Number.isFinite(v)) v = 0;
-          if (v <= 0) v = 0.5;
-          comp.poids = v;
-        }
-      }
-
-      actives = comps.filter(c => c && c.actif);
-
-      const somme = CN.data.arrondi2(
-        actives.reduce((acc, c) => acc + (Number.isFinite(c.poids) ? c.poids : 0), 0)
+      CN.app.config.afficherTotalPonderation(
+        res.totalAffiche,
+        res.erreurs.length > 0
       );
 
-      CN.el.sumPoints.textContent = somme.toFixed(2).replace(".", ",");
-      if (CN.el.sumPointsLibreMirror) {
-        CN.el.sumPointsLibreMirror.textContent = CN.el.sumPoints.textContent;
-      }
-
-      const totalBox = document.getElementById("totalPointsDisplay");
-      if (totalBox) totalBox.classList.toggle("bad-total", Math.abs(somme - 20) > 1e-9);
-
-      const totalBoxLibre = document.getElementById("totalPointsDisplayLibre");
-      if (totalBoxLibre) totalBoxLibre.classList.toggle("bad-total", Math.abs(somme - 20) > 1e-9);
-
-      const erreurs = [];
-
-      if (actives.length === 0) {
-        erreurs.push("Vous devez sélectionner au moins une composante.");
-      }
-
-      if (actives.length >= 2) {
-        const bad = actives.some(c => !Number.isFinite(c.poids) || c.poids <= 0);
-        if (bad) {
-          erreurs.push("Lorsque plusieurs composantes sont actives, chacune doit avoir une pondération > 0.");
-        }
-      }
-
-      if (actives.length !== 1 && Math.abs(somme - 20) > 1e-9) {
-        erreurs.push("La somme des points doit être égale à 20.");
-      }
-
-      if (erreurs.length) {
-        CN.el.configError.textContent = erreurs.join(" ");
+      if (res.erreurs.length) {
+        CN.el.configError.textContent = res.erreurs.join(" ");
         CN.ui.afficherBloc(CN.el.configError, true);
         CN.el.btnAnalyser.disabled = true;
       } else {
@@ -1788,57 +1978,15 @@
     let comps = Array.isArray(CN.etat.composantes) ? CN.etat.composantes.filter(Boolean) : [];
     CN.etat.composantes = comps;
 
-    for (const comp of comps) {
-      if (!comp.actif) {
-        comp.poids = 0;
-      }
-    }
+    const res = CN.app.config.calculerPonderationEffective(comps);
 
-    let actives = comps.filter(c => c && c.actif);
-
-    if (actives.length === 1) {
-      actives[0].poids = 20;
-    } else {
-      for (const comp of actives) {
-        let v = CN.data.toNombreFR(comp.poids);
-        if (!Number.isFinite(v)) v = 0;
-        if (v <= 0) v = 0.5;
-        comp.poids = v;
-      }
-    }
-
-    actives = comps.filter(c => c && c.actif);
-
-    const somme = CN.data.arrondi2(
-      actives.reduce((acc, c) => acc + (Number.isFinite(c.poids) ? c.poids : 0), 0)
+    CN.app.config.afficherTotalPonderation(
+      res.totalAffiche,
+      res.erreurs.length > 0
     );
 
-    CN.el.sumPoints.textContent = somme.toFixed(2).replace(".", ",");
-
-    const totalBox = document.getElementById("totalPointsDisplay");
-    if (totalBox) {
-      totalBox.classList.toggle("bad-total", Math.abs(somme - 20) > 1e-9);
-    }
-
-    const erreurs = [];
-
-    if (actives.length === 0) {
-      erreurs.push("Vous devez sélectionner au moins une composante.");
-    }
-
-    if (actives.length >= 2) {
-      const bad = actives.some(c => !Number.isFinite(c.poids) || c.poids <= 0);
-      if (bad) {
-        erreurs.push("Lorsque plusieurs composantes sont cochées, chacune doit avoir une pondération > 0. Si vous souhaitez attribuer 0 point à une composante, veuillez la décocher.");
-      }
-    }
-
-    if (actives.length !== 1 && Math.abs(somme - 20) > 1e-9) {
-      erreurs.push("La somme des points doit être égale à 20.");
-    }
-
-    if (erreurs.length) {
-      CN.el.configError.textContent = erreurs.join(" ");
+    if (res.erreurs.length) {
+      CN.el.configError.textContent = res.erreurs.join(" ");
       CN.ui.afficherBloc(CN.el.configError, true);
       CN.el.btnAnalyser.disabled = true;
     } else {
@@ -2296,6 +2444,7 @@
         id: comp?.id || "",
         nom: comp?.nom || comp?.id || "Composante",
         poids: Number.isFinite(comp?.poids) ? comp.poids : 0,
+        coefficient: Number.isFinite(CN.data.toNombreFR(comp?.coefficient)) ? CN.data.toNombreFR(comp.coefficient) : null,
         typeCalcul: comp?.typeCalcul || "",
         baremeSource: Number.isFinite(comp?.baremeSource) ? comp.baremeSource : null,
         nbValides,
@@ -2352,6 +2501,11 @@
       cfg
     );
 
+    // Compteur de lignes dans l'onglet aperçu
+    if (CN.el.countApercu) {
+      CN.el.countApercu.textContent = String(CN.etat.apercu?.lignes?.length || 0);
+    }
+
     // Résumé
     CN.el.resume.innerHTML = "";
     const stats = {
@@ -2365,17 +2519,16 @@
     };
     CN.el.resume.appendChild(CN.affichage.construireResume(stats, cfg));
 
-    // Tableau aperçu
-    CN.affichage.remplirTableHTML(
-      CN.el.tableApercuHead,
-      CN.el.tableApercuBody,
-      CN.etat.apercu.entetes,
-      CN.etat.apercu.lignes,
-      CN.etat.apercu.labels
-    );
+    // Tableau aperçu paginé
+    CN.affichage.filtrerApercu(CN.etat.apercu, { resetPage: true });
 
     // Tableau anomalies (aperçu)
     const listAno = CN.etat.anomalies || [];
+
+    // Compteur de lignes dans l'onglet anomalies
+    if (CN.el.countAnomalies) {
+      CN.el.countAnomalies.textContent = String(listAno.length);
+    }
 
     const showSuggestionAno = listAno.some(a =>
       ((a?.propositionId ?? "").toString().trim() !== "")
@@ -2410,25 +2563,43 @@
       return row;
     });
 
-    CN.affichage.remplirTableHTML(
-      CN.el.tableAnomaliesHead,
-      CN.el.tableAnomaliesBody,
-      entAno,
-      lignesAno
-    );
+    CN.etat.tableAnomaliesData = {
+      entetes: entAno,
+      lignes: lignesAno,
+      labels: null
+    };
+
+    CN.affichage.remplirFiltreTypesAnomalies(CN.etat.tableAnomaliesData);
+    CN.affichage.filtrerAnomalies(CN.etat.tableAnomaliesData, { resetPage: true });
 
     // Affiche la zone résultats
     CN.ui.afficherBloc(CN.el.zoneResultats, true);
 
-    // Filtre/recherche : on recalcule l’affichage du tableau aperçu
-    CN.el.recherche.oninput = () => CN.affichage.filtrerApercu(CN.etat.apercu);
-    CN.el.filtreAnomalies.onchange = () => CN.affichage.filtrerApercu(CN.etat.apercu);
+    // Après chaque analyse, on revient automatiquement sur l'onglet principal
+    CN.app.main.activerOngletResultats("apercu");
+
+    // Filtre/recherche : on revient à la page 1 après chaque changement
+    CN.el.recherche.oninput = () => CN.affichage.filtrerApercu(CN.etat.apercu, { resetPage: true });
+    CN.el.filtreAnomalies.onchange = () => CN.affichage.filtrerApercu(CN.etat.apercu, { resetPage: true });
+
+    if (CN.el.rechercheAnomalies) {
+      CN.el.rechercheAnomalies.oninput = () => {
+        CN.affichage.filtrerAnomalies(CN.etat.tableAnomaliesData, { resetPage: true });
+      };
+    }
+
+    if (CN.el.filtreTypeAnomalies) {
+      CN.el.filtreTypeAnomalies.onchange = () => {
+        CN.affichage.filtrerAnomalies(CN.etat.tableAnomaliesData, { resetPage: true });
+      };
+    }
 
     // Active les boutons d’export
     CN.ui.afficherBloc(CN.el.btnExportPegase, avecPegase);
     CN.el.btnExportPegase.disabled = !avecPegase;
     CN.el.btnExportAnomalies.disabled = false;
     CN.el.btnExportCalcul.disabled = false;
+    CN.el.btnExportCalcul.textContent = "Exporter CSV calcul ▾";
   };
 
   // Exports CSV
@@ -2573,6 +2744,288 @@
 
     const horodatage = CN.app.exports.getHorodatageNomFichier();
     CN.csv.telechargerTexte(`calcul_notes_${horodatage}.csv`, csv);
+  };
+
+  // Formate un nombre pour le CSV détail calcul
+  CN.app.exports.formaterNombreDetail = function (valeur, delim = ";") {
+    const n = CN.data.toNombreFR(valeur);
+    if (!Number.isFinite(n)) return "";
+
+    let s = n.toFixed(4).replace(/\.?0+$/, "");
+
+    if (delim === ";") {
+      s = s.replace(".", ",");
+    }
+
+    return s;
+  };
+
+  // Récupère les résultats d'une composante
+  CN.app.exports.getMapResultatComposante = function (composante) {
+    if (!composante || !composante.resultat) return new Map();
+
+    if (composante.typeCalcul === "pix") {
+      return composante.resultat.parEtudiant instanceof Map
+        ? composante.resultat.parEtudiant
+        : new Map();
+    }
+
+    return composante.resultat.map instanceof Map
+      ? composante.resultat.map
+      : new Map();
+  };
+
+  // Construit uniquement la formule à afficher dans la cellule
+  CN.app.exports.construireFormuleDetailComposante = function (comp, id, contribution, delim) {
+    const fmt = (v) => CN.app.exports.formaterNombreDetail(v, delim);
+
+    const poids = Number.isFinite(comp?.poids) ? comp.poids : 0;
+    const mapComp = CN.app.exports.getMapResultatComposante(comp);
+    const item = mapComp.get(id) || null;
+
+    // Si l'étudiant n'a pas de donnée pour cette composante
+    if (!item) {
+      return "0";
+    }
+
+    // PIX : score entre 0 et 1 × pondération
+    if (comp.typeCalcul === "pix") {
+      const score = Number.isFinite(item.score) ? item.score : 0;
+      return `${fmt(score)} × ${fmt(poids)} = ${fmt(contribution)}`;
+    }
+
+    // Présences : score sur 5 transformé selon la pondération
+    if (comp.typeCalcul === "presence") {
+      const score5 = Number.isFinite(item.score5) ? item.score5 : 0;
+      return `(${fmt(score5)} / 5) × ${fmt(poids)} = ${fmt(contribution)}`;
+    }
+
+    // Composante classique note /20 ou mode libre avec barème source
+    if (comp.typeCalcul === "note20") {
+      const bareme = CN.utils.normaliserBaremeSource(
+        item.baremeSource ?? comp.baremeSource,
+        20
+      );
+
+      const noteSource = Number.isFinite(item.note20) ? item.note20 : 0;
+
+      return `(${fmt(noteSource)} / ${fmt(bareme)}) × ${fmt(poids)} = ${fmt(contribution)}`;
+    }
+
+    return fmt(contribution);
+  };
+
+  // Construit le CSV détail calcul
+  // Même structure que le CSV calcul, mais les colonnes de composantes contiennent les formules
+  CN.app.exports.construireDetailCalculCSV = function (delim = ";") {
+    const notes = CN.etat.notes instanceof Map ? CN.etat.notes : new Map();
+    const composantesActives = CN.utils.getComposantesActives();
+    const apercu = CN.etat.apercu || null;
+    const mappingPegase = CN.etat.mappingPegase || {};
+    const cfg = CN.etat.config || {};
+
+    const colId = mappingPegase.colId || "N° étudiant";
+    const colNom = mappingPegase.colNom || "Nom";
+    const colPrenom = mappingPegase.colPrenom || "Prénom";
+
+    const entetes = [
+      "N° étudiant",
+      "Nom",
+      "Prénom",
+      ...composantesActives.map(comp => {
+        const poids = CN.app.exports.formaterNombreDetail(comp.poids, delim);
+        return `${comp.nom || comp.id || "Composante"} (/${poids})`;
+      }),
+      "Note finale (/20)"
+    ];
+
+    const lignes = (apercu?.lignes || []).map(r => {
+      const id = (
+        r[colId] ??
+        r["N° étudiant"] ??
+        ""
+      ).toString().trim();
+
+      const noteEtudiant = notes.get(id) || null;
+
+      const out = {
+        "N° étudiant": id,
+        "Nom": (r[colNom] ?? r["Nom"] ?? noteEtudiant?.nom ?? "").toString(),
+        "Prénom": (r[colPrenom] ?? r["Prénom"] ?? noteEtudiant?.prenom ?? "").toString(),
+      };
+
+      for (const comp of composantesActives) {
+        const poids = CN.app.exports.formaterNombreDetail(comp.poids, delim);
+        const nomColonne = `${comp.nom || comp.id || "Composante"} (/${poids})`;
+
+        const contribution = Number.isFinite(noteEtudiant?.notesParComposante?.[comp.id])
+          ? noteEtudiant.notesParComposante[comp.id]
+          : 0;
+
+        out[nomColonne] = CN.app.exports.construireFormuleDetailComposante(
+          comp,
+          id,
+          contribution,
+          delim
+        );
+      }
+
+      out["Note finale (/20)"] = Number.isFinite(noteEtudiant?.noteFinale)
+        ? CN.data.formaterNoteSelonConfig(
+          noteEtudiant.noteFinale,
+          cfg,
+          delim === ";" ? "," : "."
+        )
+        : (r["NOTE_FINALE_20"] ?? "").toString();
+
+      return out;
+    });
+
+    return CN.csv.genererCSV(entetes, lignes, delim);
+  };
+
+  // Export du CSV détail calcul
+  CN.app.exports.exporterDetailCalculCSV = function () {
+    if (!CN.etat?.notes || !CN.etat?.apercu) {
+      CN.ui.ajouterMessage("warn", "Aucun détail de calcul à exporter. Cliquez d'abord sur « Analyser ».");
+      return;
+    }
+
+    const delim = CN.etat.mappingPegase?.delimiteur || ";";
+    const csv = CN.app.exports.construireDetailCalculCSV(delim);
+
+    const horodatage = CN.app.exports.getHorodatageNomFichier();
+    CN.csv.telechargerTexte(`detail_calcul_notes_${horodatage}.csv`, csv);
+  };
+
+  // Ferme le menu d'export calcul
+  CN.app.exports.fermerMenuExportCalcul = function () {
+    const menu = document.getElementById("exportCalculMenu");
+    if (menu) menu.remove();
+
+    if (window.__exportCalculOnDocClick) {
+      document.removeEventListener("mousedown", window.__exportCalculOnDocClick, true);
+      window.__exportCalculOnDocClick = null;
+    }
+
+    if (window.__exportCalculOnKeyDown) {
+      document.removeEventListener("keydown", window.__exportCalculOnKeyDown, true);
+      window.__exportCalculOnKeyDown = null;
+    }
+  };
+
+  // Construit et affiche le menu sous le bouton "Exporter CSV calcul"
+  CN.app.exports.ouvrirMenuExportCalcul = function (btn) {
+    CN.app.exports.fermerMenuExportCalcul();
+
+    // Si le menu anomalies est ouvert, on le ferme pour éviter deux menus en même temps
+    if (typeof CN.app.exports.fermerMenuExportAnomalies === "function") {
+      CN.app.exports.fermerMenuExportAnomalies();
+    }
+
+    if (!CN.etat?.apercu) {
+      CN.ui.ajouterMessage("warn", "Aucun résultat à exporter. Cliquez d'abord sur « Analyser ».");
+      return;
+    }
+
+    const rect = btn.getBoundingClientRect();
+
+    const menu = document.createElement("div");
+    menu.id = "exportCalculMenu";
+
+    menu.style.position = "absolute";
+    menu.style.zIndex = "2000";
+    menu.style.top = `${rect.bottom + window.scrollY + 8}px`;
+    menu.style.left = `${rect.left + window.scrollX}px`;
+    menu.style.minWidth = `${Math.max(260, Math.round(rect.width))}px`;
+    menu.style.maxWidth = "420px";
+    menu.style.background = "#ffffff";
+    menu.style.border = "1px solid #d8e0ee";
+    menu.style.borderRadius = "12px";
+    menu.style.boxShadow = "0 10px 30px rgba(17,24,39,.10)";
+    menu.style.padding = "6px";
+    menu.style.userSelect = "none";
+
+    const menuWidth = 420;
+    const leftMax = window.innerWidth - 12 - menuWidth;
+    if (rect.left > leftMax) {
+      menu.style.left = `${Math.max(12, window.innerWidth - 12 - menuWidth)}px`;
+    }
+
+    function itemHTML(label, action) {
+      return `
+      <div
+        data-action="${action}"
+        style="
+          padding:10px 12px;
+          border-radius:10px;
+          cursor:pointer;
+          font-weight:900;
+          font-size:13px;
+          color:#111827;
+          line-height:1.25;
+          white-space:normal;
+        "
+        onmouseover="this.style.background='#eff6ff'"
+        onmouseout="this.style.background='transparent'"
+      >
+        ${label}
+      </div>
+    `;
+    }
+
+    menu.innerHTML = `
+      ${itemHTML("Calcul simple", "simple")}
+
+      <div style="height:1px;background:#eef2f8;margin:6px 6px;"></div>
+
+      ${itemHTML("Calcul détaillé avec formules", "detail")}
+    `;
+
+    document.body.appendChild(menu);
+
+    menu.addEventListener("click", (e) => {
+      const target = e.target.closest("[data-action]");
+      if (!target) return;
+
+      const action = target.getAttribute("data-action");
+
+      CN.app.exports.fermerMenuExportCalcul();
+
+      if (action === "simple") {
+        CN.app.exports.exporterCalculCSV();
+        return;
+      }
+
+      if (action === "detail") {
+        CN.app.exports.exporterDetailCalculCSV();
+      }
+    });
+
+    window.__exportCalculOnDocClick = (e) => {
+      const m = document.getElementById("exportCalculMenu");
+      if (!m) return;
+      if (m.contains(e.target) || btn.contains(e.target)) return;
+      CN.app.exports.fermerMenuExportCalcul();
+    };
+    document.addEventListener("mousedown", window.__exportCalculOnDocClick, true);
+
+    window.__exportCalculOnKeyDown = (e) => {
+      if (e.key === "Escape") CN.app.exports.fermerMenuExportCalcul();
+    };
+    document.addEventListener("keydown", window.__exportCalculOnKeyDown, true);
+  };
+
+  // Bouton calcul : ouvre/ferme le menu
+  CN.app.exports.exporterCalcul = function () {
+    const menu = document.getElementById("exportCalculMenu");
+
+    if (menu) {
+      CN.app.exports.fermerMenuExportCalcul();
+      return;
+    }
+
+    CN.app.exports.ouvrirMenuExportCalcul(CN.el.btnExportCalcul);
   };
 
   // Export anomalies
@@ -2744,7 +3197,376 @@
     CN.app.exports.ouvrirMenuExportAnomalies(CN.el.btnExportAnomalies);
   };
 
+  // Presets de configuration
+
+  // Nettoie une composante avant de la mettre dans un preset.
+  // On garde uniquement la configuration utile, pas les résultats ni les fichiers importés.
+  CN.app.presets.nettoyerComposantePourPreset = function (comp) {
+    if (!comp) return null;
+
+    return {
+      id: comp.id || "",
+      nom: comp.nom || "",
+      actif: !!comp.actif,
+      poids: Number.isFinite(CN.data.toNombreFR(comp.poids)) ? CN.data.toNombreFR(comp.poids) : 0,
+      coefficient: Number.isFinite(CN.data.toNombreFR(comp.coefficient)) ? CN.data.toNombreFR(comp.coefficient) : 1,
+      typeCalcul: comp.typeCalcul || "note20",
+      baremeSource: Number.isFinite(CN.data.toNombreFR(comp.baremeSource)) ? CN.data.toNombreFR(comp.baremeSource) : null,
+      multiFichiers: !!comp.multiFichiers,
+      mapping: CN.app.util.copier(comp.mapping || CN.utils.creerMappingVidePourType(comp.typeCalcul)),
+      mappingParFichier: CN.app.util.copier(comp.mappingParFichier || {})
+    };
+  };
+
+  // Normalise une composante chargée depuis un preset.
+  // évite de casser l’application si le fichier JSON est incomplet ou ancien.
+  CN.app.presets.normaliserComposanteDepuisPreset = function (comp, fallbackIndex) {
+    const typeCalcul = ["pix", "presence", "note20"].includes((comp?.typeCalcul || "").toString())
+      ? comp.typeCalcul
+      : "note20";
+
+    const id = (comp?.id || `comp_${fallbackIndex}`).toString();
+    const nom = (comp?.nom || `Composante ${fallbackIndex}`).toString();
+
+    const poids = CN.data.toNombreFR(comp?.poids);
+    const coefficient = CN.data.toNombreFR(comp?.coefficient);
+    const baremeSource = CN.data.toNombreFR(comp?.baremeSource);
+
+    return {
+      id,
+      nom,
+      actif: comp?.actif !== false,
+      poids: Number.isFinite(poids) ? poids : 0,
+      coefficient: Number.isFinite(coefficient) && coefficient > 0 ? coefficient : 1,
+      typeCalcul,
+      baremeSource: typeCalcul === "note20"
+        ? CN.utils.normaliserBaremeSource(baremeSource, 20)
+        : null,
+      multiFichiers: !!comp?.multiFichiers,
+      mapping: CN.app.util.copier({
+        ...CN.utils.creerMappingVidePourType(typeCalcul),
+        ...(comp?.mapping || {})
+      }),
+      mappingParFichier: CN.app.util.copier(comp?.mappingParFichier || {}),
+      resultat: null,
+      brut: null
+    };
+  };
+
+  CN.app.presets.normaliserListeComposantesDepuisPreset = function (liste, fallbackListe) {
+    const source = Array.isArray(liste) && liste.length
+      ? liste
+      : fallbackListe;
+
+    return source
+      .filter(Boolean)
+      .map((comp, index) => CN.app.presets.normaliserComposanteDepuisPreset(comp, index + 1));
+  };
+
+  // Calcule le compteur du mode libre à partir des ids comp_1, comp_2, etc.
+  CN.app.presets.calculerCompteurLibre = function (composantesLibres, compteurPreset) {
+    let maxId = 0;
+
+    for (const comp of composantesLibres || []) {
+      const m = (comp?.id || "").toString().match(/^comp_(\d+)$/);
+      if (m) maxId = Math.max(maxId, Number(m[1]));
+    }
+
+    const n = Number(compteurPreset);
+    return Math.max(Number.isFinite(n) ? n : 0, maxId, composantesLibres?.length || 0);
+  };
+
+  // Construit le contenu JSON du preset à partir de l’état actuel.
+  CN.app.presets.construirePresetCourant = function () {
+    // Avant de sauvegarder, on synchronise l’interface avec CN.etat.
+    if (CN.utils.estModeLibre()) {
+      CN.app.config.sauverEtatModeLibre();
+    } else {
+      CN.app.config.syncComposantesDepuisUIClassique();
+      CN.app.config.sauverEtatModeClassique();
+    }
+
+    CN.etat.config = CN.app.config.calcConfigFromUI();
+
+    const composantesCourantes = (CN.etat.composantes || [])
+      .map(CN.app.presets.nettoyerComposantePourPreset)
+      .filter(Boolean);
+
+    const composantesClassiques = (CN.etat.composantesClassiques || [])
+      .map(CN.app.presets.nettoyerComposantePourPreset)
+      .filter(Boolean);
+
+    const composantesLibres = (CN.etat.composantesLibres || [])
+      .map(CN.app.presets.nettoyerComposantePourPreset)
+      .filter(Boolean);
+
+    return {
+      format: "culture-numerique-preset",
+      versionPreset: 1,
+      appVersion: CN.meta?.version || "",
+      dateCreation: new Date().toISOString(),
+
+      donnees: {
+        modeSaisie: CN.utils.estModeLibre() ? "libre" : "classique",
+        config: CN.app.util.copier(CN.etat.config || {}),
+        mappingPegase: CN.app.util.copier(CN.etat.mappingPegase || {}),
+
+        composantes: composantesCourantes,
+        composantesClassiques,
+        composantesLibres,
+        compteurComposantesLibres: CN.etat.compteurComposantesLibres || 0
+      }
+    };
+  };
+
+  // Nettoie le nom choisi par l'utilisateur pour éviter les caractères interdits dans un nom de fichier.
+  CN.app.presets.nettoyerNomFichierPreset = function (nom) {
+    return (nom ?? "")
+      .toString()
+      .trim()
+
+      // Si l'utilisateur écrit déjà ".json", on l'enlève pour éviter "preset.json.json".
+      .replace(/\.json$/i, "")
+
+      // Caractères interdits dans les noms de fichiers Windows/macOS/Linux.
+      .replace(/[\\/:*?"<>|]/g, "")
+
+      // On remplace les espaces multiples par un seul espace.
+      .replace(/\s+/g, " ")
+
+      // On limite la longueur pour éviter un nom énorme.
+      .slice(0, 80)
+      .trim();
+  };
+
+  // Construit le nom final du fichier preset.
+  // Si aucun nom n'est donné, on garde le nom automatique.
+  CN.app.presets.construireNomFichierPreset = function (nomUtilisateur) {
+    const horodatage = CN.app.exports.getHorodatageNomFichier();
+    const nomNettoye = CN.app.presets.nettoyerNomFichierPreset(nomUtilisateur);
+
+    if (!nomNettoye) {
+      return `preset_culture_numerique_${horodatage}.json`;
+    }
+
+    return `${nomNettoye}.json`;
+  };
+
+  // Télécharge le preset sous forme de fichier JSON.
+  CN.app.presets.sauvegarderPreset = function (nomUtilisateur) {
+    const preset = CN.app.presets.construirePresetCourant();
+    const json = JSON.stringify(preset, null, 2);
+
+    const nomFichier = CN.app.presets.construireNomFichierPreset(nomUtilisateur);
+
+    CN.csv.telechargerTexte(
+      nomFichier,
+      json,
+      "application/json;charset=utf-8"
+    );
+
+    CN.ui.ajouterMessage("ok", "Preset sauvegardé. Le fichier JSON pourra être rechargé plus tard.", 3000);
+  };
+
+  // Ouvre la fenêtre intégrée à l'application pour saisir le nom du preset.
+  CN.app.presets.ouvrirModalNomPreset = function () {
+    if (!CN.el.presetNameOverlay || !CN.el.presetNameInput) return;
+
+    CN.el.presetNameInput.value = "";
+    CN.ui.afficherBloc(CN.el.presetNameOverlay, true);
+
+    // Petit délai pour que la modal soit affichée avant de mettre le curseur dans le champ.
+    setTimeout(() => {
+      CN.el.presetNameInput.focus();
+    }, 50);
+  };
+
+  // Ferme la fenêtre de saisie du nom du preset.
+  CN.app.presets.fermerModalNomPreset = function () {
+    CN.ui.afficherBloc(CN.el.presetNameOverlay, false);
+
+    if (CN.el.presetNameInput) {
+      CN.el.presetNameInput.value = "";
+    }
+  };
+
+  // Valide le nom saisi puis sauvegarde le preset.
+  // Si le champ est vide, le nom automatique sera utilisé.
+  CN.app.presets.validerNomPreset = function () {
+    const nomUtilisateur = CN.el.presetNameInput?.value || "";
+
+    CN.app.presets.fermerModalNomPreset();
+    CN.app.presets.sauvegarderPreset(nomUtilisateur);
+  };
+
+  // Vide les fichiers importés, un preset ne contient pas les CSV.
+  CN.app.presets.viderFichiersApresChargementPreset = function () {
+    if (CN.el.fichierPegase) {
+      CN.el.fichierPegase.value = "";
+    }
+
+    CN.etat.pegase = null;
+    CN.etat.pegaseRempli = null;
+    CN.etat.entetesPegase = null;
+
+    CN.etat.fichiersComposantes = {};
+    CN.etat.fichiersComposantesClassiques = {};
+
+    CN.ui.setDZText("peg", []);
+    CN.app.dropzones.invaliderResultatsAnalyse();
+  };
+
+  // Applique dans l’application les données présentes dans le preset.
+  CN.app.presets.appliquerPreset = function (preset) {
+    if (!preset || preset.format !== "culture-numerique-preset" || !preset.donnees) {
+      throw new Error("Le fichier sélectionné n’est pas un preset valide pour cette application.");
+    }
+
+    const d = preset.donnees;
+
+    const modeSaisie = d.modeSaisie === "libre" ? "libre" : "classique";
+
+    const configDefaut = {
+      modeRemplissage: "ne_rien_ecraser",
+      arrondiActif: true,
+      arrondiMethode: "classique",
+      arrondiPrecision: "centieme",
+      modePonderation: "points"
+    };
+
+    CN.etat.config = {
+      ...configDefaut,
+      ...(d.config || {})
+    };
+
+    CN.etat.config.modePonderation = CN.app.config.normaliserModePonderation(
+      CN.etat.config.modePonderation
+    );
+
+    CN.etat.mappingPegase = {
+      colId: null,
+      colNom: null,
+      colPrenom: null,
+      colNote: null,
+      delimiteur: ";",
+      ...(d.mappingPegase || {})
+    };
+
+    const classiquesDefaut = CN.utils.creerComposantesModeClassique();
+    const libresDefaut = CN.utils.creerComposantesModeLibreParDefaut();
+
+    CN.etat.composantesClassiques = CN.app.presets.normaliserListeComposantesDepuisPreset(
+      d.composantesClassiques,
+      classiquesDefaut
+    );
+
+    CN.etat.composantesLibres = CN.app.presets.normaliserListeComposantesDepuisPreset(
+      d.composantesLibres,
+      libresDefaut
+    );
+
+    CN.etat.compteurComposantesLibres = CN.app.presets.calculerCompteurLibre(
+      CN.etat.composantesLibres,
+      d.compteurComposantesLibres
+    );
+
+    CN.etat.modeSaisie = modeSaisie;
+    CN.etat.composantes = CN.app.util.copier(
+      modeSaisie === "libre"
+        ? CN.etat.composantesLibres
+        : CN.etat.composantesClassiques
+    );
+
+    // Un preset ne recharge pas les CSV : on repart donc sans fichiers importés.
+    CN.app.presets.viderFichiersApresChargementPreset();
+
+    if (CN.el.modePonderation) {
+      CN.el.modePonderation.value = CN.etat.config.modePonderation;
+    }
+
+    if (CN.el.modeClassique) CN.el.modeClassique.checked = modeSaisie === "classique";
+    if (CN.el.modeLibre) CN.el.modeLibre.checked = modeSaisie === "libre";
+
+    CN.app.config.majAffichageModeSaisie();
+    CN.app.config.rendreListeComposantesClassiques();
+    CN.app.config.rendreListeComposantesLibres();
+    CN.app.dropzones.rendreImportsModeClassique();
+    CN.app.dropzones.rendreImportsModeLibre();
+
+    CN.app.dropzones.majStatusPills();
+    CN.app.dropzones.majBoutonsConfig();
+
+    CN.ui.viderMessages();
+    CN.ui.afficherBloc(CN.el.zoneResultats, false);
+
+    CN.app.config.appliquerReglesConfig();
+
+    CN.ui.ajouterMessage(
+      "ok",
+      "Preset chargé. La configuration a été restaurée, mais les fichiers CSV doivent être réimportés.",
+      4000
+    );
+  };
+
+  // Lit le fichier JSON choisi par l’utilisateur.
+  CN.app.presets.chargerPresetDepuisFichier = async function (file) {
+    if (!file) return;
+
+    const texte = await CN.csv.lireFichierTexte(file);
+    let preset = null;
+
+    try {
+      preset = JSON.parse(texte);
+    } catch (_) {
+      throw new Error("Impossible de lire le preset : le fichier JSON est invalide.");
+    }
+
+    CN.app.presets.appliquerPreset(preset);
+  };
+
   // Main (reset, bind, init)
+
+  // Onglet dans la zone des résultats
+  // - "apercu" affiche le tableau principal
+  // - "anomalies" affiche le tableau des anomalies
+  CN.app.main.activerOngletResultats = function (onglet) {
+    const cible = onglet === "anomalies" ? "anomalies" : "apercu";
+
+    const tabs = [
+      {
+        nom: "apercu",
+        bouton: CN.el.resultTabApercu,
+        panel: CN.el.panelApercu
+      },
+      {
+        nom: "anomalies",
+        bouton: CN.el.resultTabAnomalies,
+        panel: CN.el.panelAnomalies
+      }
+    ];
+
+    for (const item of tabs) {
+      const actif = item.nom === cible;
+
+      if (item.bouton) {
+        item.bouton.classList.toggle("active", actif);
+        item.bouton.setAttribute("aria-selected", actif ? "true" : "false");
+      }
+
+      if (item.panel) {
+        item.panel.classList.toggle("active", actif);
+      }
+    }
+
+    // On affiche uniquement la pagination du tableau actif.
+    if (CN.el.paginationApercu) {
+      CN.ui.afficherBloc(CN.el.paginationApercu, cible === "apercu");
+    }
+
+    if (CN.el.paginationAnomalies) {
+      CN.ui.afficherBloc(CN.el.paginationAnomalies, cible === "anomalies");
+    }
+  };
 
   // Réinitialisation (remet l’état à zéro)
   CN.app.main.reinitialiser = function () {
@@ -2794,6 +3616,7 @@
     CN.etat.anomalies = null;
     CN.etat.anomaliesParId = null;
     CN.etat.apercu = null;
+    CN.etat.tableAnomaliesData = null;
     CN.etat.modeSansPegase = false;
     CN.etat.analyseDejaLancee = false;
 
@@ -2809,9 +3632,19 @@
     CN.app.modal.fermerModalMapping();
     CN.app.modal.fermerParamCalcul();
     CN.app.modal.fermerModalReglagesComposante();
+    CN.app.presets.fermerModalNomPreset();
 
     CN.el.recherche.value = "";
     CN.el.filtreAnomalies.value = "tous";
+
+    if (CN.el.rechercheAnomalies) {
+      CN.el.rechercheAnomalies.value = "";
+    }
+
+    if (CN.el.filtreTypeAnomalies) {
+      CN.el.filtreTypeAnomalies.innerHTML = `<option value="tous" selected>Tous les types</option>`;
+      CN.el.filtreTypeAnomalies.value = "tous";
+    }
 
     // On recoche le bon mode
     if (CN.el.modeClassique) CN.el.modeClassique.checked = (modeCourant === "classique");
@@ -2835,6 +3668,8 @@
     CN.el.btnExportPegase.disabled = true;
     CN.el.btnExportAnomalies.disabled = true;
     CN.el.btnExportCalcul.disabled = true;
+
+    if (CN.el.btnExportDetailCalcul) CN.el.btnExportDetailCalcul.disabled = true;
 
     CN.app.config.appliquerReglesConfig();
   };
@@ -2878,7 +3713,20 @@
     CN.el.btnReinitialiser.addEventListener("click", CN.app.main.reinitialiser);
     CN.el.btnExportPegase.addEventListener("click", CN.app.exports.exporterPegaseRempli);
     CN.el.btnExportAnomalies.addEventListener("click", CN.app.exports.exporterAnomalies);
-    CN.el.btnExportCalcul.addEventListener("click", CN.app.exports.exporterCalculCSV);
+    CN.el.btnExportCalcul.addEventListener("click", CN.app.exports.exporterCalcul);
+
+    // Onglets des tableaux de résultats
+    if (CN.el.resultTabApercu) {
+      CN.el.resultTabApercu.addEventListener("click", () => {
+        CN.app.main.activerOngletResultats("apercu");
+      });
+    }
+
+    if (CN.el.resultTabAnomalies) {
+      CN.el.resultTabAnomalies.addEventListener("click", () => {
+        CN.app.main.activerOngletResultats("anomalies");
+      });
+    }
 
     // Bouton paramètres avancés
     if (CN.el.btnOpenParamCalcul) {
@@ -2976,6 +3824,11 @@
     document.addEventListener("keydown", (e) => {
       if (e.key !== "Escape") return;
 
+      if (CN.el.presetNameOverlay && !CN.el.presetNameOverlay.classList.contains("bloc-cache")) {
+        CN.app.presets.fermerModalNomPreset();
+        return;
+      }
+
       if (CN.el.aboutOverlay && !CN.el.aboutOverlay.classList.contains("bloc-cache")) {
         CN.ui.afficherBloc(CN.el.aboutOverlay, false);
         return;
@@ -2995,6 +3848,13 @@
         return;
       }
     });
+
+    if (CN.el.modePonderation) {
+      CN.el.modePonderation.addEventListener("change", () => {
+        CN.etat.config.modePonderation = CN.app.config.normaliserModePonderation(CN.el.modePonderation.value);
+        CN.app.config.appliquerReglesConfig();
+      });
+    }
 
     // Switch mode
     if (CN.el.modeClassique) {
@@ -3020,6 +3880,62 @@
 
     if (CN.el.btnOpenParamCalculLibre) {
       CN.el.btnOpenParamCalculLibre.addEventListener("click", CN.app.modal.ouvrirParamCalcul);
+    }
+
+    // Presets de configuration
+    if (CN.el.btnSavePreset) {
+      CN.el.btnSavePreset.addEventListener("click", CN.app.presets.ouvrirModalNomPreset);
+    }
+
+    // Modal nom du preset
+    if (CN.el.btnPresetNameClose) {
+      CN.el.btnPresetNameClose.addEventListener("click", CN.app.presets.fermerModalNomPreset);
+    }
+
+    if (CN.el.btnPresetNameCancel) {
+      CN.el.btnPresetNameCancel.addEventListener("click", CN.app.presets.fermerModalNomPreset);
+    }
+
+    if (CN.el.btnPresetNameSave) {
+      CN.el.btnPresetNameSave.addEventListener("click", CN.app.presets.validerNomPreset);
+    }
+
+    if (CN.el.presetNameInput) {
+      CN.el.presetNameInput.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          CN.app.presets.validerNomPreset();
+        }
+      });
+    }
+
+    if (CN.el.presetNameOverlay) {
+      CN.el.presetNameOverlay.addEventListener("click", (e) => {
+        if (e.target === CN.el.presetNameOverlay) {
+          CN.app.presets.fermerModalNomPreset();
+        }
+      });
+    }
+
+    if (CN.el.btnLoadPreset && CN.el.presetFileInput) {
+      CN.el.btnLoadPreset.addEventListener("click", () => {
+        CN.el.presetFileInput.click();
+      });
+    }
+
+    if (CN.el.presetFileInput) {
+      CN.el.presetFileInput.addEventListener("change", () => {
+        const file = CN.el.presetFileInput.files?.[0] || null;
+
+        CN.app.presets.chargerPresetDepuisFichier(file)
+          .catch(e => {
+            CN.ui.ajouterMessage("danger", e.message);
+            console.error(e);
+          })
+          .finally(() => {
+            CN.el.presetFileInput.value = "";
+          });
+      });
     }
   };
 
@@ -3069,6 +3985,7 @@
     CN.el.btnExportPegase.disabled = true;
     CN.el.btnExportAnomalies.disabled = true;
     CN.el.btnExportCalcul.disabled = true;
+    CN.el.btnExportCalcul.textContent = "Exporter CSV calcul ▾";
     CN.el.btnExportAnomalies.textContent = "Exporter CSV anomalies ▾";
 
     // Textes de dropzones
